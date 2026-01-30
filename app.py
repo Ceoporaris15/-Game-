@@ -1,11 +1,10 @@
 import streamlit as st
 import random
-import time
 
 # --- 戦域設定 ---
 st.set_page_config(page_title="DEUS: Tactical Console", layout="wide", initial_sidebar_state="collapsed")
 
-# カスタムCSS：マリオ風アニメと核使用時の円周警告演出
+# カスタムCSS：レイアウト維持、アニメーションを完全に排除
 st.markdown("""
     <style>
     .main { background-color: #0e1111; color: #d3d3d3; font-family: 'Courier New', monospace; }
@@ -13,37 +12,26 @@ st.markdown("""
         width: 100%; border: 1px solid #4a4a4a; background-color: #1a1a1a; color: #00ff00;
         height: 3em; border-radius: 0px; font-weight: bold; font-size: 0.8rem;
     }
-    
-    /* 演出モニター */
+    /* 演出モニター：静止表示用 */
     .battle-scene {
         background-color: #000; border: 2px solid #333; height: 150px;
-        position: relative; overflow: hidden; margin-bottom: 10px;
-        background-image: linear-gradient(to bottom, #000 85%, #222 85%);
+        position: relative; display: flex; align-items: center; justify-content: center;
+        margin-bottom: 10px;
     }
-
-    /* 核使用時の円周警告アニメーション */
-    @keyframes circle-pulse {
-        0% { transform: translate(-50%, -50%) scale(0.1); opacity: 1; border: 10px solid #ff0000; }
-        100% { transform: translate(-50%, -50%) scale(2); opacity: 0; border: 2px solid #ff0000; }
+    /* 核兵器使用時のターゲットマーク（静止） */
+    .nuke-target {
+        width: 120px; height: 120px; border-radius: 50%;
+        border: 4px double #ff0000; position: relative;
     }
-    .nuke-circle {
-        position: absolute; top: 50%; left: 50%;
-        width: 100px; height: 100px; border-radius: 50%;
-        animation: circle-pulse 0.8s infinite;
-        z-index: 10;
+    .nuke-target::before {
+        content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #ff0000;
     }
-
-    /* マリオ風アニメ */
-    @keyframes mario-march {
-        0% { left: -10%; bottom: 10px; }
-        25% { bottom: 40px; }
-        50% { bottom: 10px; }
-        75% { bottom: 40px; }
-        100% { left: 110%; bottom: 10px; }
+    .nuke-target::after {
+        content: ''; position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background: #ff0000;
     }
-    .unit-mario { position: absolute; font-size: 3rem; animation: mario-march 1s linear; }
     
     .status-text { font-size: 0.7rem; color: #00ff00; text-transform: uppercase; padding: 2px 10px; }
+    .unit-icon-static { font-size: 4rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -56,7 +44,7 @@ if 'state' not in st.session_state:
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0},
         "turn": 1, "player_ap": 2, "logs": ["SYSTEM: 難易度を選択せよ。"],
         "wmd_charging": False, "ai_awakened": False, "difficulty": None,
-        "last_icon": "📡", "last_name": "STANDBY", "is_nuke_effect": False
+        "last_icon": "📡", "last_name": "STANDBY", "is_nuke_active": False
     }
 
 s = st.session_state.state
@@ -81,7 +69,7 @@ def ai_logic():
             else: apply_damage_to_player(p2["military"] * 0.2)
 
 def player_step(cmd):
-    s["is_nuke_effect"] = False
+    s["is_nuke_active"] = False
     if cmd == "DEVELOP":
         p1["military"] += 25.0; p1["nuke_point"] += 20
         s["last_icon"], s["last_name"] = "🛠️", "UPGRADING"
@@ -99,7 +87,7 @@ def player_step(cmd):
     elif cmd == "NUKE":
         p2["territory"] *= 0.2; p1["nuke_point"] = 0
         s["last_icon"], s["last_name"] = "☢️", "CRITICAL"
-        s["is_nuke_effect"] = True # 核演出フラグON
+        s["is_nuke_active"] = True
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -121,15 +109,14 @@ else:
         st.progress(max(0.0, min(p1['territory']/200, 1.0)))
 
     with col_visual:
-        # 演出モニター
         st.markdown(f'<div class="status-text">SIGNAL: {s["last_name"]}</div>', unsafe_allow_html=True)
-        if s["is_nuke_effect"]:
-            # 核使用時の円周演出 + キノコ雲
-            st.markdown('<div class="battle-scene"><div class="nuke-circle"></div><div class="nuke-circle" style="animation-delay:0.4s"></div></div>', unsafe_allow_html=True)
+        if s["is_nuke_active"]:
+            # 核使用時：警告マークと画像を重ねず、並べて表示（またはエリア内表示）
+            st.markdown('<div class="battle-scene"><div class="nuke-target"></div></div>', unsafe_allow_html=True)
             st.image(IMG_NUKE, use_container_width=True)
         else:
-            # 通常のマリオ風アニメ
-            st.markdown(f'<div class="battle-scene"><div class="unit-mario">{s["last_icon"]}</div></div>', unsafe_allow_html=True)
+            # 通常：アイコンを静止表示
+            st.markdown(f'<div class="battle-scene"><div class="unit-icon-static">{s["last_icon"]}</div></div>', unsafe_allow_html=True)
 
     st.divider()
     m1, m2, m3 = st.columns(3)
@@ -148,3 +135,5 @@ else:
         if c[1].button("🛡 防衛"): player_step("DEFEND"); st.rerun()
         if c[0].button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
         if c[1].button("🚩 占領"): player_step("OCCUPY"); st.rerun()
+
+    for log in s["logs"][:1]: st.caption(log)
