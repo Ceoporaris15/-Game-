@@ -2,7 +2,7 @@ import streamlit as st
 import random
 
 st.set_page_config(page_title="DEUS: Nuclear Decision", layout="wide")
-st.title("⚔️ 国家間Game：非対称核戦争の終焉")
+st.title("⚔️ 国家間Game")
 
 if 'state' not in st.session_state:
     st.session_state.state = {
