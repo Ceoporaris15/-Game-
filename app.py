@@ -2,7 +2,7 @@ import streamlit as st
 import random
 
 st.set_page_config(page_title="DEUS: Nuclear Decision", layout="wide")
-st.title("⚔️ 国家間Game")
+st.title("☮️ 国家間Game")
 
 if 'state' not in st.session_state:
     st.session_state.state = {
@@ -29,7 +29,7 @@ def apply_damage_to_player(dmg, is_wmd=False):
     
     if dmg > 0:
         p1["territory"] = max(0, p1["territory"] - dmg)
-        type_str = "☢️ AI核攻撃" if is_wmd else "💥 通常攻撃"
+        type_str = "☢️ AI核攻撃" if is_wmd else "🚀 通常攻撃"
         s["logs"].insert(0, f"{type_str}: 本国領土が {dmg:.1f} の被害を受けました。")
 
 # --- AIロジック (2回行動) ---
@@ -104,7 +104,7 @@ def player_step(cmd):
         nuke_dmg = p2["territory"] * 0.8
         p2["territory"] -= nuke_dmg
         p1["nuke_point"] = 0
-        s["logs"].insert(0, f"☢️🚀 FINAL JUDGEMENT: 核兵器によりAI領土の80%({nuke_dmg:.1f})を消滅！")
+        s["logs"].insert(0, f"☢️ FINAL JUDGEMENT: 核兵器によりAI領土の80%({nuke_dmg:.1f})を消滅！")
 
     # バースト判定
     if p1["military"] >= 100:
@@ -148,7 +148,7 @@ elif p2["territory"] <= 0:
 else:
     # 200ポイントで核ボタン出現
     if p1["nuke_point"] >= 200:
-        if st.button("🚀 核兵器発射 (AI領土80%壊滅)", type="primary", use_container_width=True):
+        if st.button("☣ 核兵器発射 (AI領土80%壊滅)", type="primary", use_container_width=True):
             player_step("NUKE"); st.rerun()
     
     c = st.columns(5)
