@@ -7,7 +7,7 @@ st.title("🌏 国家間Game：超大国 vs 属国")
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"name": "Player", "power": 10.0, "territory": 10.0, "military": 5.0, "colony": 0.0, "shield": False},
-        "p2": {"name": "DEUS", "power": 50.0, "territory": 50.0, "military": 50.0, "colony": 20.0, "shield": False},
+        "p2": {"name": "AI", "power": 50.0, "territory": 50.0, "military": 50.0, "colony": 20.0, "shield": False},
         "turn": 1,
         "logs": ["SYSTEM: 構造的不平等を承認。DEUSによる『管理』が始まります。"],
         "player_ap": 2,
