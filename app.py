@@ -6,24 +6,17 @@ st.set_page_config(page_title="TOTALITARIAN COMMAND", layout="centered")
 
 st.markdown("""
     <style>
-    /* 全体：鉄とコンクリートの質感 */
     .main { background-color: #1a1a1a; color: #f2e8c9; font-family: 'Courier New', monospace; }
-    
-    /* 敵（DEUS）：独裁国家の赤と黒 */
     .enemy-box {
         border: 4px solid #8b0000; background: #2b0000;
         padding: 15px; border-radius: 0px; margin-bottom: 20px;
         box-shadow: 5px 5px 0px #000;
     }
-    
-    /* プレイヤー：軍事司令部の灰と金 */
     .player-box {
         border: 4px solid #d4af37; background: #2f2f2f;
         padding: 15px; border-radius: 0px;
         box-shadow: 5px 5px 0px #000;
     }
-
-    /* 核兵器：最終審判の演出 */
     .nuke-overlay {
         text-align: center; border: 5px solid #ff0000;
         padding: 20px; background: #000; margin-bottom: 10px;
@@ -35,20 +28,14 @@ st.markdown("""
     }
     .target-scope::before { content: ''; position: absolute; top: 50%; left: -20%; width: 140%; height: 3px; background: #ff0000; }
     .target-scope::after { content: ''; position: absolute; left: 50%; top: -20%; width: 3px; height: 140%; background: #ff0000; }
-    
-    /* ボタン：重厚なクリック感 */
     .stButton>button {
         border-radius: 0px; background-color: #4a4a4a; color: #f2e8c9;
-        border: 2px solid #d4af37; font-weight: bold; height: 3em;
+        border: 2px solid #d4af37; font-weight: bold; height: 3em; width: 100%;
     }
     .stButton>button:hover { background-color: #d4af37; color: #000; }
-    
-    /* プログレスバーの色変更 */
-    div[st-metric-label] { color: #d4af37 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 画像アセット ---
 IMG_NUKE = "https://images.unsplash.com/photo-1515285761066-608677e5d263?auto=format&fit=crop&q=80&w=800"
 
 if 'state' not in st.session_state:
@@ -90,10 +77,10 @@ def player_step(cmd):
     s["effect"] = None
     if cmd == "DEVELOP":
         p1["military"] += 25.0; p1["nuke_point"] += 20
-        s["logs"].insert(0, "指令：軍需産業を拡張。軍備を増強した。")
+        s["logs"].insert(0, "指令：軍需産業を拡張。軍備を増強。")
     elif cmd == "DEFEND":
         p1["shield"] = True
-        s["logs"].insert(0, "指令：防衛線を構築。被害を抑制する。")
+        s["logs"].insert(0, "指令：防衛線を構築。被害を抑制。")
     elif cmd == "MARCH":
         dmg = (p1["military"] * 0.5) + (p1["colony"] * 0.6)
         p2["territory"] -= dmg
@@ -106,7 +93,7 @@ def player_step(cmd):
     elif cmd == "NUKE":
         s["effect"] = "NUKE"
         p2["territory"] *= 0.2; p1["nuke_point"] = 0
-        s["logs"].insert(0, "最終指令：神の火を放て。敵文明を消去。")
+        s["logs"].insert(0, "最終指令：神の火を放て。文明を消去。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -115,11 +102,10 @@ def player_step(cmd):
 # --- 戦術指令画面 ---
 if s["difficulty"] is None:
     st.title("🚩 DEUS 戦術指令コンソール")
-    st.write("対象勢力を選択し、闘争を開始せよ。")
     cols = st.columns(3)
-    if cols[0].button("小国（容易）"): s["difficulty"] = "小国"; p2["territory"] = 150.0; st.rerun()
-    if cols[1].button("大国（標準）"): s["difficulty"] = "大国"; st.rerun()
-    if cols[2].button("超大国（困難）"): s["difficulty"] = "超大国"; s["ai_awakened"] = True; st.rerun()
+    if cols[0].button("小国"): s["difficulty"] = "小国"; p2["territory"] = 150.0; st.rerun()
+    if cols[1].button("大国"): s["difficulty"] = "大国"; st.rerun()
+    if cols[2].button("超大国"): s["difficulty"] = "超大国"; s["ai_awakened"] = True; st.rerun()
 else:
     # 敵陣営
     st.markdown(f'<div class="enemy-box">', unsafe_allow_html=True)
@@ -143,31 +129,31 @@ else:
     col_p2.metric("緩衝地帯", f"{p1['colony']:.1f}")
     col_p3.metric("行動権", s["player_ap"])
 
-    # ステータス
     c_m1, c_m2 = st.columns(2)
+    # 【修正箇所】値を0.0〜1.0の範囲に収めるためにmin(..., 1.0)を追加
+    mil_val = min(p1['military'] / 100.0, 1.0)
+    nuke_val = min(p1['nuke_point'] / 200.0, 1.0)
+    
     c_m1.caption(f"軍事動員数: {p1['military']}/100")
-    c_m1.progress(p1['military']/100)
-    c_m2.caption(f"核兵器承認率: {p1['nuke_point']}/200")
-    c_m2.progress(min(p1['nuke_point']/200, 1.0))
+    c_m1.progress(mil_val)
+    c_m2.caption(f"核承認率: {p1['nuke_point']}/200")
+    c_m2.progress(nuke_val)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 指令ボタン
     st.write("")
     if p1["territory"] <= 0 or p2["territory"] <= 0:
         if p1["territory"] <= 0: st.error("国家崩壊：司令官、貴公は敗北した。")
         else: st.success("闘争勝利：敵対勢力は歴史から消去された。")
-        if st.button("再起動（歴史の修正）"): st.session_state.clear(); st.rerun()
+        if st.button("再起動"): st.session_state.clear(); st.rerun()
     else:
         if p1["nuke_point"] >= 200:
-            if st.button("🚀 最終宣告（核）を執行する", type="primary", use_container_width=True): player_step("NUKE"); st.rerun()
+            if st.button("🚀 最終宣告（核）を執行", type="primary"): player_step("NUKE"); st.rerun()
         
-        btn_cols = st.columns(4)
+        btn_cols = st.columns(2)
         if btn_cols[0].button("🛠 開発"): player_step("DEVELOP"); st.rerun()
         if btn_cols[1].button("🛡 防備"): player_step("DEFEND"); st.rerun()
-        if btn_cols[2].button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
-        if btn_cols[3].button("🚩 占領"): player_step("OCCUPY"); st.rerun()
+        if btn_cols[0].button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
+        if btn_cols[1].button("🚩 占領"): player_step("OCCUPY"); st.rerun()
 
-    # 指令ログ
     st.write("---")
-    st.markdown("**通信記録（Command Logs）:**")
     for log in s["logs"][:4]: st.text(log)
