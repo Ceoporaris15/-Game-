@@ -1,15 +1,15 @@
 import streamlit as st
 import random
 
-st.set_page_config(page_title="国家間Game会改：Overdrive", layout="wide")
-st.title("⚔️ 国家間Game会改：冷徹な支配者")
+st.set_page_config(page_title="国家間Game会改：完全対策システム", layout="wide")
+st.title("⚔️ 国家間Game会改：完全対策DEUS")
 
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"name": "Player", "power": 10.0, "territory": 10.0, "military": 10.0, "colony": 0.0, "shield": False},
-        "p2": {"name": "AI", "power": 10.0, "territory": 10.0, "military": 10.0, "colony": 0.0, "shield": False},
+        "p1": {"power": 10.0, "territory": 10.0, "military": 10.0, "colony": 0.0, "shield": False},
+        "p2": {"power": 10.0, "territory": 10.0, "military": 10.0, "colony": 0.0, "shield": False},
         "turn": 1,
-        "logs": ["AI：戦術演算開始。時間をかけて、あなたの基盤を解体します。"],
+        "logs": ["AI：全選択肢への対策を完了。論理的敗北をお楽しみください。"],
         "player_ap": 2,
         "ai_ap": 2
     }
@@ -18,80 +18,89 @@ s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 GOAL = 100.0
 
+# --- ロジック定数 ---
 def get_income(player):
     return (player["military"] * player["territory"]) * 0.15
 
 def get_max_ap(player):
     return 2 + int(player["colony"] / 7)
 
-# --- AI：じわじわ追い詰める戦略ロジック ---
-def ai_logic_strategic():
+# --- AI：全選択肢対策アルゴリズム ---
+def ai_logic_perfect_counter(player_last_action):
     if s["ai_ap"] <= 0:
         p2["power"] += get_income(p2)
         s["ai_ap"] = get_max_ap(p2)
         p2["shield"] = False
 
-    # AIの思考：いきなり倒さず、有利な状況を積み上げる
-    # 1. 確実なフィニッシュ（条件達成が目前なら実行）
-    if p2["power"] >= 93:
+    # AIの意思決定マトリックス
+    # 1. 確実な勝利演算
+    if p2["power"] + (s["ai_ap"] * 7) >= GOAL:
         action = "ECONOMY"
-    elif (p2["military"] * 0.45) >= p1["territory"]:
+    # 2. プレイヤーの行動に対する直撃カウンター
+    elif player_last_action == "MILITARY":
+        # プレイヤーの軍拡に対し、即座に「防衛」を張り攻撃を無効化しつつ軍事を削る
+        action = "DEFEND" if not p2["shield"] else "OCCUPY"
+    elif player_last_action == "ATTACK":
+        # プレイヤーの攻撃後、手薄な領土を「占領」してリソースを奪う
+        action = "OCCUPY" if s["ai_ap"] >= 2 else "MILITARY"
+    elif player_last_action == "DEFEND":
+        # プレイヤーの防衛（攻撃待ち）に対し、攻撃をせず「軍縮」で経済差をつける
+        action = "ECONOMY"
+    elif player_last_action == "ECONOMY":
+        # プレイヤーの経済優先に対し、最大火力で「攻撃」し成長の土台（領土）を破壊する
         action = "ATTACK"
-    # 2. 妨害・破壊工作：プレイヤーのAP増加の芽（領土）を少しずつ摘む
-    elif p1["territory"] > 12 and s["ai_ap"] >= 2:
-        action = "OCCUPY"
-    # 3. 経済的嫌がらせ：プレイヤーが稼いでいるなら、自分も経済を回して差を広げる
-    elif p1["power"] > p2["power"] + 5:
-        action = "ECONOMY"
-    # 4. 軍事的威圧：自分の軍事が低いと舐められないよう、着実に強化
-    elif p2["military"] < p1["military"] + 5:
-        action = "MILITARY"
-    # 5. 牽制攻撃：プレイヤーに「防衛」を使わせてAPを無駄遣いさせる
+    elif player_last_action == "OCCUPY":
+        # プレイヤーの占領に対し、自分も「占領」し返してAP差をつけさせない
+        action = "OCCUPY" if s["ai_ap"] >= 2 else "ATTACK"
     else:
-        action = "ATTACK"
+        action = "MILITARY"
 
+    # AIアクション実行
     if action == "MILITARY":
         p2["military"] += 4; p2["power"] -= 1.0; s["ai_ap"] -= 1
-        s["logs"].insert(0, "🔴 AI：軍拡。じわじわと戦力の圧を強めています。")
+        s["logs"].insert(0, "🔴 AI：軍拡。戦力を均衡、またはそれ以上に保ちます。")
     elif action == "ECONOMY":
         p2["power"] += 7; s["ai_ap"] -= 1
-        s["logs"].insert(0, "🔴 AI：軍縮。着実に国力の差を広げています。")
+        s["logs"].insert(0, "🔴 AI：軍縮。経済効率であなたを突き放します。")
     elif action == "DEFEND":
         p2["shield"] = True; s["ai_ap"] -= 1
-        s["logs"].insert(0, "🔴 AI：防衛。あなたの反撃を冷静に受け流します。")
+        s["logs"].insert(0, "🔴 AI：カウンター防衛。あなたの軍備増強を無効化します。")
     elif action == "ATTACK":
-        dmg = p2["military"] * 0.4
+        dmg = p2["military"] * 0.45
         if p1["shield"]: 
-            p1["shield"] = False; p1["military"] = max(0, p1["military"] - 2.0)
-            s["logs"].insert(0, "🔴 AI：小規模攻撃。あなたの防衛リソースを削りました。")
+            p1["shield"] = False; p1["military"] = max(0, p1["military"] - 4.0)
+            s["logs"].insert(0, "🔴 AI：強襲。シールドを破壊し、軍事力を減衰させました。")
         else: 
             p1["territory"] -= dmg
-            s["logs"].insert(0, f"🔴 AI：牽制。領土を{dmg:.1f}破壊し、基盤を揺さぶります。")
+            s["logs"].insert(0, f"🔴 AI：精密攻撃。領土を{dmg:.1f}削り、国力を低下させました。")
         s["ai_ap"] -= 1
     elif action == "OCCUPY":
-        steal = p1["territory"] * 0.2; p1["territory"] -= steal; p2["colony"] += steal; s["ai_ap"] -= 2
-        s["logs"].insert(0, f"🔴 AI：工作員による占領。少しずつ支配権を奪っています。")
+        steal = p1["territory"] * 0.25; p1["territory"] -= steal; p2["colony"] += steal; s["ai_ap"] -= 2
+        s["logs"].insert(0, f"🔴 AI：占領工作。あなたの手数を奪い、自らの支配を広げます。")
 
 def player_step(cmd):
-    if cmd == "MILITARY": p1["military"] += 4; p1["power"] -= 1.0; s["logs"].insert(0, "🔵 あなた：軍拡")
-    elif cmd == "ECONOMY": p1["power"] += 7; s["logs"].insert(0, "🔵 あなた：軍縮")
-    elif cmd == "DEFEND": p1["shield"] = True; s["logs"].insert(0, "🔵 あなた：防衛")
+    # プレイヤーの行動
+    if cmd == "MILITARY": p1["military"] += 4; p1["power"] -= 1.0; s["logs"].insert(0, "🔵 Player：軍拡")
+    elif cmd == "ECONOMY": p1["power"] += 7; s["logs"].insert(0, "🔵 Player：軍縮")
+    elif cmd == "DEFEND": p1["shield"] = True; s["logs"].insert(0, "🔵 Player：防衛")
     elif cmd == "ATTACK":
         dmg = p1["military"] * 0.4
-        if p2["shield"]: p2["shield"] = False; p2["military"] = max(0, p2["military"] - 3.0); s["logs"].insert(0, "🔵 あなた：攻撃（防がれた）")
-        else: p2["territory"] -= dmg; s["logs"].insert(0, f"🔵 あなた：攻撃（損害{dmg:.1f}）")
+        if p2["shield"]: p2["shield"] = False; p2["military"] = max(0, p2["military"] - 3.0); s["logs"].insert(0, "🔵 Player：攻撃（防御され軍事損傷）")
+        else: p2["territory"] -= dmg; s["logs"].insert(0, f"🔵 Player：攻撃（AI領土-{dmg:.1f}）")
     elif cmd == "OCCUPY":
-        steal = p2["territory"] * 0.2; p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🔵 あなた：占領")
+        steal = p2["territory"] * 0.2; p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🔵 Player：占領")
     
     s["player_ap"] -= 2 if cmd == "OCCUPY" else 1
-    ai_logic_strategic() # 即時応答
+    
+    # プレイヤーの行動を引数に渡し、AIが「完全対策」を実行
+    ai_logic_perfect_counter(cmd)
     
     if s["player_ap"] <= 0:
         p1["power"] += get_income(p1)
         s["player_ap"] = get_max_ap(p1)
         s["turn"] += 1; p1["shield"] = False
 
-# --- UI ---
+# --- UI描画 ---
 
 
 col1, col2 = st.columns(2)
@@ -109,14 +118,13 @@ with col2:
 
 st.divider()
 
-# 勝利判定：同点ルール廃止（先に条件を満たした方が勝利。同時なら現時点ではPlayer優先だが、AIがそうさせないよう動く）
 p1_win = p1["power"] >= GOAL or p2["territory"] <= 0
 p2_win = p2["power"] >= GOAL or p1["territory"] <= 0
 
 if p1_win or p2_win:
     winner = "AI" if p2_win else "Player"
-    if winner == "AI": st.error("【敗北】AIに全リソースを掌握されました。")
-    else: st.success("【勝利】AIの支配を打ち破りました！")
+    if winner == "AI": st.error("【敗北】AIの論理から逃れることはできませんでした。")
+    else: st.success("【奇跡】AIの対策を力でねじ伏せました！")
     if st.button("再戦"): st.session_state.clear(); st.rerun()
 else:
     c = st.columns(5)
