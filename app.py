@@ -2,7 +2,7 @@ import streamlit as st
 import random
 
 st.set_page_config(page_title="DEUS: Total War", layout="wide")
-st.title("⚔️ 国家間Game：殲滅の50年")
+st.title("⚔️ 国家間Game")
 
 if 'state' not in st.session_state:
     st.session_state.state = {
