@@ -1,7 +1,7 @@
 import streamlit as st
 import random
 
-st.set_page_config(page_title="DEUS: Superpower System", layout="wide")
+st.set_page_config(page_title="AI: Superpower System", layout="wide")
 st.title("🌏 国家間Game：超大国 vs 属国")
 
 if 'state' not in st.session_state:
