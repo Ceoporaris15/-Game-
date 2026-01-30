@@ -1,135 +1,175 @@
 import streamlit as st
 import random
+import time
 
-# --- 戦域設定 ---
-st.set_page_config(page_title="STRATEGIC CHESS", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="DEUS: Three Powers", layout="centered")
 
-# スマホ最適化CSS：スクロールを排除し、盤面を1画面に収める
-st.markdown("""
-    <style>
-    .main { background-color: #0e1111; color: #d3d3d3; font-family: 'Courier New', monospace; }
-    .stButton>button { 
-        width: 100%; border: 1px solid #4a4a4a; background-color: #1a1a1a; color: #00ff00;
-        font-weight: bold; height: 3.5em; border-radius: 0px; font-size: 0.8rem;
-    }
-    .stProgress > div > div > div > div { background-color: #ff0000; }
-    .status-box { background-color: #001100; border: 1px solid #00ff00; padding: 10px; text-align: center; }
-    .battle-field { 
-        background-color: #111; border: 2px dashed #444; padding: 20px; 
-        text-align: center; font-size: 2rem; margin: 10px 0;
-    }
-    .metric-val { color: #00ff00; font-size: 1.5rem; font-weight: bold; }
-    .metric-label { font-size: 0.7rem; text-transform: uppercase; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 画像アセット（演出用） ---
+IMG_AIR_STRIKE = "https://images.unsplash.com/photo-1517976384346-3136801d605d?auto=format&fit=crop&q=80&w=800" # 戦闘機
+IMG_NUKE = "https://images.unsplash.com/photo-1515285761066-608677e5d263?auto=format&fit=crop&q=80&w=800" # 核爆発
 
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"land": 100.0, "milit": 0.0, "buffer": 20.0, "shield": False, "atom": 0},
-        "p2": {"land": 350.0, "milit": 60.0},
-        "turn": 1, "ap": 2, "wmd": False, "hard_mode": False,
-        "mode_selected": False, "last_action": "READY", "board_icon": "🚩"
+        "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "shield": False, "nuke_point": 0},
+        "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0, "shield": False},
+        "turn": 1,
+        "logs": ["SYSTEM: 難易度を選択して開始してください。"],
+        "player_ap": 2, 
+        "wmd_charging": False,
+        "ai_awakened": False,
+        "difficulty": None, # Easy, Normal, Hard
+        "effect": None # 演出表示用
     }
 
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-# --- 司令部ロジック ---
-def apply_strike(dmg):
-    if p1["shield"]: dmg *= 0.6
-    if p1["buffer"] > 0:
-        blocked = min(p1["buffer"], dmg)
-        p1["buffer"] -= blocked
-        dmg -= blocked
-    if dmg > 0: p1["land"] = max(0, p1["land"] - dmg)
+# --- 難易度設定 ---
+def set_difficulty(level):
+    s["difficulty"] = level
+    if level == "小国 (Easy)":
+        s["p2"]["territory"] = 150.0
+        s["p2"]["military"] = 30.0
+    elif level == "超大国 (Hard)":
+        s["p2"]["territory"] = 500.0
+        s["p2"]["military"] = 100.0
+        s["ai_awakened"] = True
+    s["logs"] = [f"SYSTEM: 難易度【{level}】で開始。"]
 
-def enemy_action():
-    acts = 2 if s["hard_mode"] else 1
-    for _ in range(acts):
-        if p2["land"] <= 0: break
-        if s["wmd"]:
-            apply_strike(p1["land"] * 0.4)
-            s["wmd"] = False
-        else:
-            if random.random() < (0.2 if s["hard_mode"] else 0.1): s["wmd"] = True
-            else: apply_strike(p2["milit"] * 0.2)
+# --- ダメージ処理 ---
+def apply_damage_to_player(dmg, is_wmd=False):
+    # 防衛の下方修正：ダメージを100%から40%カット(残り60%受ける)に変更
+    if p1["shield"]:
+        dmg *= 0.6
+        s["logs"].insert(0, "🛡️ 防衛体制：被害を40%軽減。")
 
-def exec_op(cmd):
-    if cmd == "DEV":
-        p1["milit"] += 25.0; p1["atom"] += 20
-        s.update({"last_action": "RESEARCHING", "board_icon": "🧪"})
-    elif cmd == "DEF":
-        p1["shield"] = True
-        s.update({"last_action": "DEFENDING", "board_icon": "🛡️"})
-    elif cmd == "ATK":
-        p2["land"] -= (p1["milit"] * 0.5) + (p1["buffer"] * 0.6)
-        s.update({"last_action": "MARCHING", "board_icon": "🚜"}) # 戦車
-    elif cmd == "OCC":
-        if p1["milit"] >= 20:
-            p1["milit"] -= 20
-            stolen = max(p2["land"] * 0.2, 40.0)
-            p2["land"] -= stolen; p1["buffer"] += stolen
-            s.update({"last_action": "OCCUPYING", "board_icon": "🛰️"}) # ミサイル/衛星
-    elif cmd == "NUKE":
-        p2["land"] *= 0.2; p1["atom"] = 0
-        s.update({"last_action": "JUDGEMENT", "board_icon": "☢️"})
-
-    s["ap"] -= 1
-    if s["ap"] <= 0:
-        enemy_action()
-        s["ap"], s["turn"], p1["shield"] = 2, s["turn"] + 1, False
-
-# --- インターフェース ---
-if not s["mode_selected"]:
-    st.title("🛡️ STRATEGIC COMMAND")
-    if st.button("作戦開始"): s["mode_selected"] = True; st.rerun()
-    if st.button("非常事態 (HARD)"): s["hard_mode"] = True; s["mode_selected"] = True; st.rerun()
-else:
-    # 1. 敵軍エリア (将棋の敵陣)
-    st.markdown(f"""
-    <div class="status-box">
-        <div class="metric-label">ENEMY TERRITORY</div>
-        <div class="metric-val">{p2['land']:.0f}</div>
-        <small>{'⚠️ WMD DETECTED' if s['wmd'] else 'STATUS: STABLE'}</small>
-    </div>
-    """, unsafe_allow_html=True)
-    st.progress(max(0.0, min(p2['land']/500, 1.0)))
-
-    # 2. 中央戦域 (盤面)
-    # ここにアクションに応じたアイコンがリアルタイムで表示される
-    st.markdown(f"""
-    <div class="battle-field">
-        <div>{s['board_icon']}</div>
-        <div style="font-size: 0.8rem; color: #888;">{s['last_action']}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 3. 自軍エリア (将棋の自陣)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f'<div class="metric-label">HOME</div><div class="metric-val">{p1["land"]:.0f}</div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'<div class="metric-label">BUFFER</div><div class="metric-val">{p1["buffer"]:.0f}</div>', unsafe_allow_html=True)
+    if p1["colony"] > 0:
+        shield_amt = min(p1["colony"], dmg)
+        p1["colony"] -= shield_amt
+        dmg -= shield_amt
+        if shield_amt > 0:
+            s["logs"].insert(0, f"🛡️ 占領地が {shield_amt:.1f} の被害を肩代わり。")
     
-    # 4. 操作パネル (駒を打つ感覚で)
-    if p1["land"] <= 0:
-        st.error("落城")
-        if st.button("RETRY"): st.session_state.clear(); st.rerun()
-    elif p2["land"] <= 0:
-        st.success("制覇")
-        if st.button("RETRY"): st.session_state.clear(); st.rerun()
-    else:
-        st.write(f"TURN: {s['turn']} | AP: {s['ap']}")
-        
-        # 核兵器ボタン
-        if p1["atom"] >= 200:
-            if st.button("☢️ 核兵器投入", type="primary"): exec_op("NUKE"); st.rerun()
-        
-        btn_c1, btn_c2 = st.columns(2)
-        if btn_c1.button("🛠 開発 (DEV)"): exec_op("DEV"); st.rerun()
-        if btn_c2.button("🛡 防衛 (DEF)"): exec_op("DEF"); st.rerun()
-        if btn_c1.button("🚜 進軍 (ATK)"): exec_op("ATK"); st.rerun()
-        if btn_c2.button("🛰 占領 (OCC)"): exec_op("OCC"); st.rerun()
+    if dmg > 0:
+        p1["territory"] = max(0, p1["territory"] - dmg)
+        s["logs"].insert(0, f"{'☢️' if is_wmd else '💥'} 本国が {dmg:.1f} の損害。")
 
-    # 5. ステータスバー
-    st.caption(f"MILITARY: {p1['milit']:.0f}/100 | SPECIAL: {p1['atom']:.0f}/200")
+# --- AIロジック ---
+def ai_logic():
+    # 行動回数の決定
+    actions = 1 if s["difficulty"] == "小国 (Easy)" else 2
+    
+    # 覚醒判定 (Normalのみ)
+    if s["difficulty"] == "大国 (Normal)" and not s["ai_awakened"]:
+        if p1["military"] > 80 or p2["territory"] < 150 or p1["nuke_point"] > 100:
+            s["ai_awakened"] = True
+            s["logs"].insert(0, "🔴 WARNING: DEUS覚醒。")
+
+    for _ in range(actions):
+        if p2["territory"] <= 0: break
+        
+        # WMD発射
+        if s["wmd_charging"]:
+            nuke_dmg = p1["territory"] * 0.5
+            apply_damage_to_player(nuke_dmg, is_wmd=True)
+            s["wmd_charging"] = False
+            continue
+
+        choice = random.random()
+        # WMDチャージ（Hardは確率高）
+        wmd_chance = 0.4 if s["ai_awakened"] else 0.1
+        if choice < wmd_chance and not s["wmd_charging"]:
+            s["wmd_charging"] = True
+            s["logs"].insert(0, "⚠️ ALERT: AIがWMDの充填を開始！")
+        else:
+            power = 1.6 if s["ai_awakened"] else 0.8
+            dmg = p2["military"] * 0.25 * power
+            apply_damage_to_player(dmg)
+
+def player_step(cmd):
+    s["effect"] = None
+    if cmd == "DEVELOP": 
+        p1["military"] += 25.0
+        p1["nuke_point"] += 20 
+    elif cmd == "DEFEND": 
+        p1["shield"] = True
+    elif cmd == "MARCH":
+        s["effect"] = "AIR" # 空爆演出
+        dmg = (p1["military"] * 0.5) + (p1["colony"] * 0.6)
+        p2["territory"] -= dmg
+        s["logs"].insert(0, f"🔵 Player: 進軍（AI領土-{dmg:.1f}）")
+    elif cmd == "OCCUPY":
+        if p1["military"] >= 20:
+            p1["military"] -= 20
+            steal = max(p2["territory"] * 0.20, 40.0)
+            p2["territory"] -= steal
+            p1["colony"] += steal
+        else: return
+    elif cmd == "NUKE":
+        s["effect"] = "NUKE" # 核演出
+        p2["territory"] *= 0.2
+        p1["nuke_point"] = 0
+        s["logs"].insert(0, "☢️🚀 FINAL JUDGEMENT!!")
+
+    if p1["military"] >= 100:
+        p2["territory"] -= 100.0
+        p1["military"] = 0
+        s["logs"].insert(0, "💥 BURST: 総進軍！")
+
+    s["player_ap"] -= 1
+    if s["player_ap"] <= 0:
+        ai_logic()
+        s["player_ap"] = 2
+        s["turn"] += 1
+        p1["shield"] = False
+
+# --- UI (上下レイアウト) ---
+if s["difficulty"] is None:
+    st.subheader("🌐 難易度を選択してください")
+    cols = st.columns(3)
+    if cols[0].button("小国 (Easy)"): set_difficulty("小国 (Easy)"); st.rerun()
+    if cols[1].button("大国 (Normal)"): set_difficulty("大国 (Normal)"); st.rerun()
+    if cols[2].button("超大国 (Hard)"): set_difficulty("超大国 (Hard)"); st.rerun()
+else:
+    # --- 演出エリア ---
+    if s["effect"] == "AIR":
+        st.image(IMG_AIR_STRIKE, caption="✈️ 空爆開始...", use_container_width=True)
+    elif s["effect"] == "NUKE":
+        st.image(IMG_NUKE, caption="☢️ 最終宣告", use_container_width=True)
+
+    # --- AI エリア (上段) ---
+    st.subheader(f"🟥 DEUS ({s['difficulty']})")
+    st.progress(max(0.0, min(p2['territory']/500, 1.0)))
+    st.metric("AI領土", f"{p2['territory']:.1f}")
+    if s["wmd_charging"]: st.error("🚨 WMDチャージ中")
+    
+    st.write("--- VS ---")
+
+    # --- プレイヤー エリア (下段) ---
+    st.subheader(f"🟦 Player (AP: {s['player_ap']})")
+    st.metric("本国領土", f"{p1['territory']:.1f}")
+    st.metric("占領地 (盾)", f"{p1['colony']:.1f}")
+    
+    col_st1, col_st2 = st.columns(2)
+    col_st1.write(f"軍事: {p1['military']}/100")
+    col_st1.progress(p1['military']/100)
+    col_st2.write(f"核: {p1['nuke_point']}/200")
+    col_st2.progress(min(p1['nuke_point']/200, 1.0))
+
+    if p1["territory"] <= 0 or p2["territory"] <= 0:
+        if p1["territory"] <= 0: st.error("敗北...")
+        else: st.success("勝利！")
+        if st.button("再起動"): st.session_state.clear(); st.rerun()
+    else:
+        # ボタンをスマホで見やすく大きく
+        if p1["nuke_point"] >= 200:
+            if st.button("🚀 核兵器発射", type="primary", use_container_width=True): player_step("NUKE"); st.rerun()
+        
+        c = st.columns(2)
+        if c[0].button("🛠 開発", use_container_width=True): player_step("DEVELOP"); st.rerun()
+        if c[1].button("🛡 防衛(40%減)", use_container_width=True): player_step("DEFEND"); st.rerun()
+        if c[0].button("⚔️ 進軍", use_container_width=True): player_step("MARCH"); st.rerun()
+        if c[1].button("🚩 占領", use_container_width=True): player_step("OCCUPY"); st.rerun()
+
+    st.write("---")
+    for log in s["logs"][:5]: st.text(log)
