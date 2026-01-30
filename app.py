@@ -93,7 +93,7 @@ def player_step(cmd):
     elif cmd == "NUKE":
         s["effect"] = "NUKE"
         p2["territory"] *= 0.2; p1["nuke_point"] = 0
-        s["logs"].insert(0, "最終指令：神の火を放て。文明を消去。")
+        s["logs"].insert(0, "ゴールド・コード戦意をくじけ。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -151,8 +151,8 @@ else:
         
         btn_cols = st.columns(2)
         if btn_cols[0].button("🛠 開発"): player_step("DEVELOP"); st.rerun()
-        if btn_cols[1].button("🛡 防備"): player_step("DEFEND"); st.rerun()
-        if btn_cols[0].button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
+        if btn_cols[1].button("🛡️ 防備"): player_step("DEFEND"); st.rerun()
+        if btn_cols[0].button("🔫 進軍"): player_step("MARCH"); st.rerun()
         if btn_cols[1].button("🚩 占領"): player_step("OCCUPY"); st.rerun()
 
     st.write("---")
