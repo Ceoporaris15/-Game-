@@ -1,41 +1,50 @@
 import streamlit as st
 import random
 
-# --- ページ設定とダークテーマCSS ---
-st.set_page_config(page_title="STRATEGY G-DEUS", layout="centered")
+# --- 極秘軍事指令：画面設計 ---
+st.set_page_config(page_title="TOTALITARIAN COMMAND", layout="centered")
 
 st.markdown("""
     <style>
-    /* 全体の背景とテキスト */
-    .main { background-color: #0b0e14; color: #00ffcc; }
-    h1, h2, h3 { color: #00ffcc !important; font-family: 'Courier New', monospace; }
+    /* 全体：鉄とコンクリートの質感 */
+    .main { background-color: #1a1a1a; color: #f2e8c9; font-family: 'Courier New', monospace; }
     
-    /* 敵（DEUS）のコンテナ */
+    /* 敵（DEUS）：独裁国家の赤と黒 */
     .enemy-box {
-        border: 2px solid #ff4b4b; background: rgba(255, 75, 75, 0.05);
-        padding: 15px; border-radius: 5px; margin-bottom: 20px;
+        border: 4px solid #8b0000; background: #2b0000;
+        padding: 15px; border-radius: 0px; margin-bottom: 20px;
+        box-shadow: 5px 5px 0px #000;
     }
     
-    /* プレイヤーのコンテナ */
+    /* プレイヤー：軍事司令部の灰と金 */
     .player-box {
-        border: 2px solid #00ffcc; background: rgba(0, 255, 204, 0.05);
-        padding: 15px; border-radius: 5px;
+        border: 4px solid #d4af37; background: #2f2f2f;
+        padding: 15px; border-radius: 0px;
+        box-shadow: 5px 5px 0px #000;
     }
 
-    /* 核ターゲット演出 */
+    /* 核兵器：最終審判の演出 */
     .nuke-overlay {
-        text-align: center; border: 3px double #ff0000;
-        padding: 20px; background: rgba(255, 0, 0, 0.2); margin-bottom: 10px;
+        text-align: center; border: 5px solid #ff0000;
+        padding: 20px; background: #000; margin-bottom: 10px;
+        color: #ff0000; font-weight: bold;
     }
     .target-scope {
-        width: 80px; height: 80px; border: 2px solid #ff0000;
-        border-radius: 50%; margin: 0 auto; position: relative;
+        width: 100px; height: 100px; border: 3px solid #ff0000;
+        border-radius: 50%; margin: 0 auto 10px; position: relative;
     }
-    .target-scope::before { content: ''; position: absolute; top: 50%; left: -10%; width: 120%; height: 2px; background: #ff0000; }
-    .target-scope::after { content: ''; position: absolute; left: 50%; top: -10%; width: 2px; height: 120%; background: #ff0000; }
+    .target-scope::before { content: ''; position: absolute; top: 50%; left: -20%; width: 140%; height: 3px; background: #ff0000; }
+    .target-scope::after { content: ''; position: absolute; left: 50%; top: -20%; width: 3px; height: 140%; background: #ff0000; }
     
-    /* ログ */
-    .stText { font-family: 'Consolas', monospace; font-size: 0.85rem; }
+    /* ボタン：重厚なクリック感 */
+    .stButton>button {
+        border-radius: 0px; background-color: #4a4a4a; color: #f2e8c9;
+        border: 2px solid #d4af37; font-weight: bold; height: 3em;
+    }
+    .stButton>button:hover { background-color: #d4af37; color: #000; }
+    
+    /* プログレスバーの色変更 */
+    div[st-metric-label] { color: #d4af37 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,7 +55,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "shield": False, "nuke_point": 0},
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0, "shield": False},
-        "turn": 1, "logs": ["CONNECTING TO SERVER..."],
+        "turn": 1, "logs": ["通報：システム稼働開始。敵対勢力を殲滅せよ。"],
         "player_ap": 2, "wmd_charging": False, "ai_awakened": False,
         "difficulty": None, "effect": None
     }
@@ -54,18 +63,17 @@ if 'state' not in st.session_state:
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-# --- ロジック（変更なし） ---
+# --- 演算処理 ---
 def apply_damage_to_player(dmg, is_wmd=False):
     if p1["shield"]: dmg *= 0.6
     if p1["colony"] > 0:
         shield_amt = min(p1["colony"], dmg)
         p1["colony"] -= shield_amt; dmg -= shield_amt
     if dmg > 0: p1["territory"] = max(0, p1["territory"] - dmg)
-    icon = "☢️" if is_wmd else "💥"
-    s["logs"].insert(0, f"{icon} WARNING: DAMAGE RECEIVED - {dmg:.1f}")
+    s["logs"].insert(0, f"報告：{'【核】' if is_wmd else '【爆撃】'} 本国被害 {dmg:.1f} セクター")
 
 def ai_logic():
-    actions = 1 if s["difficulty"] == "小国 (Easy)" else 2
+    actions = 1 if s["difficulty"] == "小国" else 2
     for _ in range(actions):
         if p2["territory"] <= 0: break
         if s["wmd_charging"]:
@@ -75,91 +83,91 @@ def ai_logic():
             wmd_chance = 0.4 if s["ai_awakened"] else 0.1
             if random.random() < wmd_chance:
                 s["wmd_charging"] = True
-                s["logs"].insert(0, "⚠️ ALERT: AI WMD CHARGING...")
+                s["logs"].insert(0, "警告：DEUSが戦略兵器の充填を開始した！")
             else: apply_damage_to_player(p2["military"] * 0.2)
 
 def player_step(cmd):
     s["effect"] = None
     if cmd == "DEVELOP":
         p1["military"] += 25.0; p1["nuke_point"] += 20
-        s["logs"].insert(0, "🛠️ LOG: MILITARY UPGRADED.")
+        s["logs"].insert(0, "指令：軍需産業を拡張。軍備を増強した。")
     elif cmd == "DEFEND":
         p1["shield"] = True
-        s["logs"].insert(0, "🛡️ LOG: DEFENSIVE PROTOCOL ACTIVE.")
+        s["logs"].insert(0, "指令：防衛線を構築。被害を抑制する。")
     elif cmd == "MARCH":
         dmg = (p1["military"] * 0.5) + (p1["colony"] * 0.6)
         p2["territory"] -= dmg
-        s["logs"].insert(0, f"⚔️ LOG: OFFENSIVE ATTACK - {dmg:.1f}")
+        s["logs"].insert(0, f"指令：総攻撃。敵領土を {dmg:.1f} 破壊。")
     elif cmd == "OCCUPY":
         if p1["military"] >= 20:
             p1["military"] -= 20; steal = max(p2["territory"] * 0.2, 40.0)
             p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, "🚩 LOG: TERRITORY CAPTURED.")
+            s["logs"].insert(0, "指令：敵植民地を接収。緩衝地帯とした。")
     elif cmd == "NUKE":
         s["effect"] = "NUKE"
         p2["territory"] *= 0.2; p1["nuke_point"] = 0
-        s["logs"].insert(0, "☢️ CRITICAL: NUCLEAR LAUNCH CONFIRMED.")
+        s["logs"].insert(0, "最終指令：神の火を放て。敵文明を消去。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
         ai_logic(); s["player_ap"], s["turn"], p1["shield"] = 2, s["turn"] + 1, False
 
-# --- UI レイアウト ---
+# --- 戦術指令画面 ---
 if s["difficulty"] is None:
-    st.title("G-DEUS COMMAND")
-    st.write("難易度を選択して、DEUSシステムにログインしてください。")
+    st.title("🚩 DEUS 戦術指令コンソール")
+    st.write("対象勢力を選択し、闘争を開始せよ。")
     cols = st.columns(3)
-    if cols[0].button("EASY"): s["difficulty"] = "小国 (Easy)"; p2["territory"] = 150.0; st.rerun()
-    if cols[1].button("NORMAL"): s["difficulty"] = "大国 (Normal)"; st.rerun()
-    if cols[2].button("HARD"): s["difficulty"] = "超大国 (Hard)"; s["ai_awakened"] = True; st.rerun()
+    if cols[0].button("小国（容易）"): s["difficulty"] = "小国"; p2["territory"] = 150.0; st.rerun()
+    if cols[1].button("大国（標準）"): s["difficulty"] = "大国"; st.rerun()
+    if cols[2].button("超大国（困難）"): s["difficulty"] = "超大国"; s["ai_awakened"] = True; st.rerun()
 else:
-    # 敵エリア
+    # 敵陣営
     st.markdown(f'<div class="enemy-box">', unsafe_allow_html=True)
-    st.write(f"### 🔴 ENEMY: DEUS V3 [{s['difficulty']}]")
+    st.write(f"### 🚩 敵対勢力: DEUS [{s['difficulty']}]")
     st.progress(max(0.0, min(p2['territory']/500, 1.0)))
     col_e1, col_e2 = st.columns(2)
-    col_e1.metric("INTEGRITY", f"{p2['territory']:.1f}")
-    if s["wmd_charging"]: col_e2.error("⚠️ WMD CHARGED")
+    col_e1.metric("残存勢力値", f"{p2['territory']:.1f}")
+    if s["wmd_charging"]: st.warning("🚨 戦略核：充填完了")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 核兵器発射演出（ここだけ画像と円周）
+    # 核演出
     if s["effect"] == "NUKE":
-        st.markdown('<div class="nuke-overlay"><div class="target-scope"></div><h2 style="color:red">TARGET ELIMINATING...</h2></div>', unsafe_allow_html=True)
+        st.markdown('<div class="nuke-overlay"><div class="target-scope"></div><h2>最終審判：目標殲滅</h2></div>', unsafe_allow_html=True)
         st.image(IMG_NUKE, use_container_width=True)
 
-    # プレイヤーエリア
+    # 自陣営
     st.markdown(f'<div class="player-box">', unsafe_allow_html=True)
-    st.write(f"### 🔵 COMMANDER: PLAYER [TURN {s['turn']}]")
+    st.write(f"### 🎖️ 自国司令部 [作戦第 {s['turn']} 段階]")
     col_p1, col_p2, col_p3 = st.columns(3)
-    col_p1.metric("HOME", f"{p1['territory']:.1f}")
-    col_p2.metric("SHIELD", f"{p1['colony']:.1f}")
-    col_p3.metric("AP", s["player_ap"])
+    col_p1.metric("本国領土", f"{p1['territory']:.1f}")
+    col_p2.metric("緩衝地帯", f"{p1['colony']:.1f}")
+    col_p3.metric("行動権", s["player_ap"])
 
-    # 軍事力と核のゲージ
+    # ステータス
     c_m1, c_m2 = st.columns(2)
-    c_m1.caption(f"MILITARY POWER: {p1['military']}/100")
+    c_m1.caption(f"軍事動員数: {p1['military']}/100")
     c_m1.progress(p1['military']/100)
-    c_m2.caption(f"NUCLEAR CHARGE: {p1['nuke_point']}/200")
+    c_m2.caption(f"核兵器承認率: {p1['nuke_point']}/200")
     c_m2.progress(min(p1['nuke_point']/200, 1.0))
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 操作
+    # 指令ボタン
     st.write("")
     if p1["territory"] <= 0 or p2["territory"] <= 0:
-        if p1["territory"] <= 0: st.error("SYSTEM FAILURE: COMMANDER DEFEATED.")
-        else: st.success("MISSION COMPLETE: DEUS TERMINATED.")
-        if st.button("REBOOT SYSTEM"): st.session_state.clear(); st.rerun()
+        if p1["territory"] <= 0: st.error("国家崩壊：司令官、貴公は敗北した。")
+        else: st.success("闘争勝利：敵対勢力は歴史から消去された。")
+        if st.button("再起動（歴史の修正）"): st.session_state.clear(); st.rerun()
     else:
         if p1["nuke_point"] >= 200:
-            if st.button("☢️ LAUNCH NUCLEAR WEAPON", type="primary", use_container_width=True): player_step("NUKE"); st.rerun()
+            if st.button("🚀 最終宣告（核）を執行する", type="primary", use_container_width=True): player_step("NUKE"); st.rerun()
         
         btn_cols = st.columns(4)
-        if btn_cols[0].button("UPGRADE"): player_step("DEVELOP"); st.rerun()
-        if btn_cols[1].button("DEFEND"): player_step("DEFEND"); st.rerun()
-        if btn_cols[2].button("ATTACK"): player_step("MARCH"); st.rerun()
-        if btn_cols[3].button("ANNEX"): player_step("OCCUPY"); st.rerun()
+        if btn_cols[0].button("🛠 開発"): player_step("DEVELOP"); st.rerun()
+        if btn_cols[1].button("🛡 防備"): player_step("DEFEND"); st.rerun()
+        if btn_cols[2].button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
+        if btn_cols[3].button("🚩 占領"): player_step("OCCUPY"); st.rerun()
 
-    # ログ表示（下部に配置して雰囲気重視）
+    # 指令ログ
     st.write("---")
-    st.markdown("**COMMAND LOGS:**")
-    for log in s["logs"][:4]: st.caption(log)
+    st.markdown("**通信記録（Command Logs）:**")
+    for log in s["logs"][:4]: st.text(log)
