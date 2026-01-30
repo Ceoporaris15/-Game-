@@ -2,122 +2,163 @@ import streamlit as st
 import random
 import time
 
-# --- 司令部：環境設定 ---
-st.set_page_config(page_title="STRATEGIC CONSOLE", layout="wide", initial_sidebar_state="collapsed")
+# --- 戦域設定 ---
+st.set_page_config(page_title="STRATEGIC COMMAND", layout="wide", initial_sidebar_state="collapsed")
 
-# カスタムCSS：ダークモードに映えるミニマルで上品な軍事UI
+# カスタムCSS：戦争映画のような無機質なダークUI
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;400&display=swap');
-    .main { background-color: #050505; color: #e0e0e0; font-family: 'JetBrains Mono', monospace; }
-    .block-container { padding: 1rem 1rem; }
-    
-    /* ボタン：ガラスモーフィズムと洗練された境界線 */
-    .stButton>button {
-        width: 100%; border: 1px solid #333; background: rgba(255, 255, 255, 0.05);
-        color: #aaa; font-size: 0.85rem; height: 3.5rem; border-radius: 4px;
-        transition: 0.3s;
+    .main { background-color: #0e1111; color: #d3d3d3; font-family: 'Courier New', Courier, monospace; }
+    .stButton>button { 
+        width: 100%; border: 1px solid #4a4a4a; background-color: #1a1a1a; color: #00ff00;
+        font-weight: bold; height: 3em; border-radius: 0px;
     }
-    .stButton>button:hover { border: 1px solid #00d4ff; color: #00d4ff; background: rgba(0, 212, 255, 0.1); }
-    
-    /* メトリック：上品な発光 */
-    [data-testid="stMetricValue"] { font-size: 1.5rem !important; color: #00d4ff !important; font-weight: 100 !important; }
-    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; color: #666 !important; }
-    
-    /* ログ：システム端末風 */
-    .terminal-log {
-        font-size: 0.75rem; color: #00d4ff; background: rgba(0, 212, 255, 0.05);
-        border-left: 2px solid #00d4ff; padding: 10px; margin-top: 10px; border-radius: 0 4px 4px 0;
-    }
-    
-    /* プログレスバー：細身でモダン */
-    .stProgress > div > div > div > div { background-image: linear-gradient(to right, #004e92, #00d4ff); }
+    .stButton>button:hover { border: 1px solid #00ff00; background-color: #002200; }
+    .stProgress > div > div > div > div { background-color: #00ff00; }
+    h1, h2, h3 { color: #00ff00 !important; text-transform: uppercase; letter-spacing: 2px; font-size: 1.5rem; }
+    .report-text { background-color: #001100; padding: 10px; border-left: 5px solid #00ff00; margin-bottom: 10px; font-size: 0.8rem; }
+    /* 画像の最大高さを制限してスマホでのスクロールを防止 */
+    .stImage > img { max-height: 300px; object-fit: cover; }
     </style>
     """, unsafe_allow_html=True)
 
+# --- 教育用・歴史的資料画像（実際の歴史的記録写真） ---
+IMAGE_ASSETS = {
+    "RESEARCH": "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000", # 技術開発
+    "DEFENSE": "https://images.unsplash.com/photo-1554123168-b407f93924dc?q=80&w=1000",  # レーダー/防空
+    "MARCH": "https://images.unsplash.com/photo-1506774518161-b710d10e2733?q=80&w=1000",   # 進軍/地図
+    "NUCLEAR": "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?q=80&w=1000", # 戦略兵器/大気圏
+    "COLLAPSE": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=1000" # 陥落/焦土
+}
+
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"land": 100.0, "milit": 0.0, "buffer": 20.0, "atom": 0},
-        "p2": {"land": 300.0, "milit": 50.0},
-        "turn": 1, "ap": 2, "start": False,
-        "visual": "SCANNING", "logs": ["SYSTEM READY. STANDBY FOR COMMAND."]
+        "p1": {"land": 100.0, "milit": 0.0, "buffer": 20.0, "shield": False, "atom": 0},
+        "p2": {"land": 350.0, "milit": 60.0, "shield": False},
+        "turn": 1,
+        "logs": ["司令部：作戦準備を完了せよ。"],
+        "ap": 2, 
+        "wmd": False,
+        "hard_mode": False,
+        "mode_selected": False,
+        "action_img": None,
+        "buffer_lost": False
     }
 
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-def update_state(cmd):
-    s["visual"] = cmd
-    if cmd == "DEVELOP":
-        p1["milit"] += 25; p1["atom"] += 20
-        s["logs"].insert(0, "REPORT: NEW STRATEGIC TECH INTEGRATED.")
-    elif cmd == "STRIKE":
-        dmg = (p1["milit"] * 0.45) + (p1["buffer"] * 0.55)
-        p2["land"] -= dmg
-        s["logs"].insert(0, f"STRIKE SUCCESSFUL. IMPACT: {dmg:.1f}")
-    elif cmd == "FORTIFY":
-        s["logs"].insert(0, "AIR DEFENSE PARAMETERS OPTIMIZED.")
-    elif cmd == "ANNEX":
+# --- 司令部ロジック ---
+def apply_strike(dmg, is_wmd=False):
+    if p1["shield"]: dmg *= 0.6
+    if p1["buffer"] > 0:
+        blocked = min(p1["buffer"], dmg)
+        p1["buffer"] -= blocked
+        dmg -= blocked
+        if p1["buffer"] <= 0 and not s["buffer_lost"]:
+            s["action_img"] = (IMAGE_ASSETS["COLLAPSE"], "🚨 警告：第一防衛線が陥落。本土侵攻を許しました。")
+            s["buffer_lost"] = True
+    if dmg > 0:
+        p1["land"] = max(0, p1["land"] - dmg)
+        s["logs"].insert(0, f"被害：本国領土に着弾。損害 {dmg:.1f}")
+
+def enemy_action():
+    acts = 2 if s["hard_mode"] else 1
+    for _ in range(acts):
+        if p2["land"] <= 0: break
+        if s["wmd"]:
+            apply_strike(p1["land"] * 0.5, True)
+            s["wmd"] = False
+        else:
+            if random.random() < (0.3 if s["hard_mode"] else 0.1):
+                s["wmd"] = True
+                s["logs"].insert(0, "警告：敵勢力による大規模兵器のチャージを確認。")
+            else:
+                apply_strike(p2["milit"] * 0.25)
+
+def exec_op(cmd):
+    s["action_img"] = None
+    if cmd == "DEV":
+        p1["milit"] += 25.0; p1["atom"] += 20
+        s["action_img"] = (IMAGE_ASSETS["RESEARCH"], "報告：戦略技術の最適化、及び軍備の蓄積を実行。")
+    elif cmd == "DEF":
+        p1["shield"] = True
+        s["action_img"] = (IMAGE_ASSETS["DEFENSE"], "防衛：防空網を最大出力で展開。次撃の損害を40%軽減。")
+    elif cmd == "ATK":
+        s["action_img"] = (IMAGE_ASSETS["MARCH"], "攻勢：地上戦力及び航空支援による合同進軍を開始。")
+        p2["land"] -= (p1["milit"] * 0.5) + (p1["buffer"] * 0.6)
+    elif cmd == "OCC":
         if p1["milit"] >= 20:
-            p1["milit"] -= 20; area = max(p2["land"] * 0.15, 30.0)
-            p2["land"] -= area; p1["buffer"] += area
-            s["logs"].insert(0, f"BUFFER ZONE EXPANDED BY {area:.1f}.")
-    elif cmd == "FINAL":
+            p1["milit"] -= 20
+            stolen = max(p2["land"] * 0.2, 40.0)
+            p2["land"] -= stolen; p1["buffer"] += stolen
+            s["logs"].insert(0, f"占領：緩衝地帯を {stolen:.1f} 確保。防衛力が向上。")
+    elif cmd == "NUKE":
+        s["action_img"] = (IMAGE_ASSETS["NUCLEAR"], "最終兵器：戦略抑止兵器、発射。敵残存勢力の80%を無力化。")
         p2["land"] *= 0.2; p1["atom"] = 0
-        s["logs"].insert(0, "FINAL DETERRENT EXECUTED. AREA NEUTRALIZED.")
+
+    if p1["milit"] >= 100:
+        p2["land"] -= 100.0; p1["milit"] = 0
+        s["logs"].insert(0, "総進軍：リミッター解除。全軍による飽和攻撃。")
 
     s["ap"] -= 1
     if s["ap"] <= 0:
-        # AIターン
-        enemy_dmg = (p2["milit"] * 0.22)
-        if p1["buffer"] > 0:
-            p1["buffer"] = max(0, p1["buffer"] - enemy_dmg)
-        else:
-            p1["land"] = max(0, p1["land"] - enemy_dmg)
-        s["ap"], s["turn"] = 2, s["turn"] + 1
+        enemy_action()
+        s["ap"], s["turn"], p1["shield"] = 2, s["turn"] + 1, False
 
-# --- インターフェース ---
-if not s["start"]:
-    st.title("NOCTURNE COMMAND")
-    st.write("上品かつ静かなる戦略を。")
-    if st.button("INITIALIZE SYSTEM"): s["start"] = True; st.rerun()
+# --- 戦域インターフェース ---
+if not s["mode_selected"]:
+    st.title("🛡️ 統合戦域司令システム")
+    if st.button("作戦開始 (Standard)"): s["mode_selected"] = True; st.rerun()
+    if st.button("非常事態宣言 (Hard)"): s["hard_mode"] = True; s["mode_selected"] = True; st.rerun()
 else:
-    # 1. 敵情視察バー（最小限）
-    st.write(f"OPPONENT INTEGRITY: {p2['land']:.1f}")
-    st.progress(max(0.0, min(p2['land']/400, 1.0)))
+    # 報告画像ジャック
+    if s["action_img"]:
+        st.image(s["action_img"][0], use_container_width=True)
+        st.write(f"### {s['action_img'][1]}")
+        if st.button("報告を確認し、戦域に戻る"): 
+            s["action_img"] = None
+            st.rerun()
+        st.stop()
 
-    # 2. 戦況モニター（画像に頼らず、抽象的なスタイリッシュ演出）
-    # 代わりに、美しく加工された「公共の科学・技術写真」を使用
-    mon_img = {
-        "SCANNING": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=800", # 地球/データ
-        "DEVELOP": "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=800", # 回路
-        "STRIKE": "https://images.unsplash.com/photo-1534063640280-928d3a82688f?q=80&w=800",  # 追跡
-        "FORTIFY": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=800", # ノイズ/防御
-        "ANNEX": "https://images.unsplash.com/photo-1506774518161-b710d10e2733?q=80&w=800",   # 地図
-        "FINAL": "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?q=80&w=800"    # 宇宙からの視点
-    }
-    st.image(mon_img.get(s["visual"], mon_img["SCANNING"]), use_container_width=True)
+    # 指令コンソール
+    st.subheader(f"COMMAND CENTER - TURN {s['turn']}")
+    
+    # 敵勢力情報
+    st.write(f"🟥 敵勢力領土: {p2['land']:.1f} {'⚠️WMDチャージ中' if s['wmd'] else ''}")
+    st.progress(max(0.0, min(p2['land']/500, 1.0)))
+    
+    st.divider()
 
-    # 3. 自軍ステータス（スマホ1画面に収まるようコンパクトに）
-    c1, c2, c3 = st.columns(3)
-    c1.metric("HOME", f"{p1['land']:.1f}")
-    c2.metric("ZONE", f"{p1['buffer']:.1f}")
-    c3.metric("AP", f"{s['ap']}")
+    # 自軍情報
+    col_stat1, col_stat2, col_stat3 = st.columns(3)
+    col_stat1.metric("本国", f"{p1['land']:.1f}")
+    col_stat2.metric("緩衝", f"{p1['buffer']:.1f}")
+    col_stat3.metric("AP", f"{s['ap']}")
+    
+    col_bar1, col_bar2 = st.columns(2)
+    col_bar1.write(f"軍備: {p1['milit']}/100")
+    col_bar1.progress(p1['milit']/100)
+    col_bar2.write(f"核開発: {p1['atom']}/200")
+    col_bar2.progress(min(p1['atom']/200, 1.0))
 
-    # 4. 指令操作（美しく整列されたパネル）
-    if p1["atom"] >= 200:
-        if st.button("EXECUTE FINAL DETERRENT", type="primary"): update_state("FINAL"); st.rerun()
+    if p1["land"] <= 0:
+        st.error("【敗北】本国機能が停止しました。歴史から消滅します。")
+        if st.button("戦域を再構築"): st.session_state.clear(); st.rerun()
+    elif p2["land"] <= 0:
+        st.success("【勝利】対抗勢力を完全沈黙。恒久平和を確保しました。")
+        if st.button("戦域を再構築"): st.session_state.clear(); st.rerun()
+    else:
+        # 作戦パネル（スマホでも押しやすい2x2配置）
+        if p1["atom"] >= 200:
+            if st.button("🚀 戦略抑止兵器・承認", type="primary", use_container_width=True): exec_op("NUKE"); st.rerun()
+        
+        btn_c1, btn_c2 = st.columns(2)
+        if btn_c1.button("🛠 技術開発"): exec_op("DEV"); st.rerun()
+        if btn_c2.button("🛡 領域防衛"): exec_op("DEF"); st.rerun()
+        if btn_c1.button("⚔️ 攻勢進軍"): exec_op("ATK"); st.rerun()
+        if btn_c2.button("🚩 緩衝確保"): exec_op("OCC"); st.rerun()
 
-    ctrl1, ctrl2 = st.columns(2)
-    if ctrl1.button("TECH DEV"): update_state("DEVELOP"); st.rerun()
-    if ctrl2.button("AIR DEF"): update_state("FORTIFY"); st.rerun()
-    if ctrl1.button("STRIKE"): update_state("STRIKE"); st.rerun()
-    if ctrl2.button("ANNEX"): update_state("ANNEX"); st.rerun()
-
-    # 5. システムログ
-    st.markdown(f'<div class="terminal-log">{s["logs"][0]}</div>', unsafe_allow_html=True)
-
-    # 終局判定
-    if p1["land"] <= 0 or p2["land"] <= 0:
-        st.write("--- MISSION CONCLUDED ---")
-        if st.button("REINITIALIZE"): st.session_state.clear(); st.rerun()
+    st.divider()
+    for log in s["logs"][:2]:
+        st.markdown(f'<div class="report-text">{log}</div>', unsafe_allow_html=True)
