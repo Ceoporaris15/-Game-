@@ -27,18 +27,48 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 初期化 ---
+# --- 2. BGMエンジン再構築 ---
+def setup_audio_engine():
+    try:
+        with open('Vidnoz_AIMusic.mp3', 'rb') as f:
+            data = f.read()
+            b64 = base64.b64encode(data).decode()
+            # ページが切り替わっても音楽が持続するようにComponentsを使用
+            audio_html = f"""
+            <audio id="bgm" loop>
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            </audio>
+            <script>
+                var audio = window.parent.document.getElementById('bgm');
+                if (!audio) {{
+                    audio = document.getElementById('bgm');
+                }}
+                window.parent.document.addEventListener('click', function() {{
+                    if (audio.paused) {{
+                        audio.play();
+                    }}
+                }}, {{once: false}});
+            </script>
+            """
+            st.components.v1.html(audio_html, height=0)
+    except Exception as e:
+        pass
+
+# --- 3. システム初期化 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
         "turn": 1, "logs": ["SYSTEM ONLINE."],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
-        "phase": "DIFFICULTY" # DIFFICULTY -> BRIEFING -> FACTION -> GAME
+        "phase": "DIFFICULTY"
     }
 
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
+
+# --- 4. BGM起動 ---
+setup_audio_engine()
 
 # --- アクション実行関数 ---
 def player_step(cmd):
@@ -102,34 +132,27 @@ def player_step(cmd):
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
 # --- フェーズ別UI ---
-
-# 1. 難易度選択
 if s["phase"] == "DIFFICULTY":
-    st.title("陣営プロトコル")
+    st.title("難易度設定")
+    st.info("画面のどこかをクリックするとBGMが再生されます")
     if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("大国", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("超大国", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
 
-# 2. ブリーフィング画面 (追加)
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ 作戦ブリーフィング")
-    
     st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション解説】</span><br>'
                 '<span class="briefing-text">・🛠軍拡: 戦力と核開発を進める。<br>'
                 '・⚔️進軍: 敵に直接打撃を与える（敵の防衛で軽減される可能性あり）。<br>'
                 '・🚩占領: 敵領土を奪い、自国の盾となる「緩衝地帯」を強化する。<br>'
                 '・🕵️スパイ: 敵をスタンさせ、防衛を封印。核の妨害も防ぐ。<br>'
                 '・🛡防衛: 次の敵の攻撃を半減させる。</span></div>', unsafe_allow_html=True)
-
     st.markdown('<div class="briefing-card"><span class="briefing-title">【陣営特性】</span><br>'
                 '<span class="briefing-text">・<b>連合国:</b> スパイ成功率(60%)、核開発効率(2倍)。知略に長ける。<br>'
                 '・<b>枢軸国:</b> 攻撃力は高いが、防衛力が低い(被ダメ80%)。短期決戦向き。<br>'
                 '・<b>社会主義国:</b> 本土(200)、3回行動可能。ただし威力は1/4。圧倒的な物量。</span></div>', unsafe_allow_html=True)
-    
-    if st.button("陣営選択へ進む", use_container_width=True):
-        s["phase"] = "FACTION"; st.rerun()
+    if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
-# 3. 陣営選択
 elif s["phase"] == "FACTION":
     st.title("陣営プロトコル")
     c1, c2, c3 = st.columns(3)
@@ -139,11 +162,9 @@ elif s["phase"] == "FACTION":
         s["faction"] = "社会主義国"; p1["territory"] = 200.0; s["player_ap"] = 3; s["max_ap"] = 3
         s["phase"] = "GAME"; st.rerun()
 
-# 4. メインゲーム
 elif s["phase"] == "GAME":
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div><span class="stat-label">本国</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
-    
     lock_ind = " (☢️LOCK)" if p1["nuke_lock"] > 0 else ""
     st.markdown(f'<p class="nuke-title">☢️ 核開発進行状況{lock_ind}</p>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
@@ -155,7 +176,6 @@ elif s["phase"] == "GAME":
         st.caption(f"T-{s['turn']} | AP: {s['player_ap']} | {s['faction']}")
         if p1["nuke_point"] >= 200:
             if st.button("☢️ 最終宣告執行", type="primary", use_container_width=True): player_step("NUK"); st.rerun()
-        
         c1, c2, c3 = st.columns(3)
         if c1.button("🛠軍拡", use_container_width=True): player_step("EXP"); st.rerun()
         if c2.button("🛡防衛", use_container_width=True): player_step("DEF"); st.rerun()
