@@ -8,29 +8,33 @@ st.set_page_config(page_title="DEUS", layout="centered")
 st.markdown("""
     <style>
     html, body, [data-testid="stAppViewContainer"] { background-color: #000; color: #FFF; }
-    .enemy-banner { background-color: #200; border-bottom: 1px solid #F00; padding: 4px; text-align: center; margin: -55px -15px 5px -15px; }
-    .enemy-text { color: #F00; font-weight: bold; font-size: 1rem; letter-spacing: 3px; }
-    .status-row { display: flex; justify-content: space-around; background: #111; border: 1px solid #d4af37; padding: 2px; margin-bottom: 5px; border-radius: 4px; }
-    .stat-label { font-size: 0.6rem; color: #888; margin-right: 4px; }
-    .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
+    .enemy-banner { background-color: #200; border-bottom: 1px solid #F00; padding: 10px; text-align: center; margin: -55px -15px 15px -15px; }
+    .enemy-text { color: #F00; font-weight: bold; font-size: 1.2rem; letter-spacing: 5px; }
+    
+    /* ステータスバーの視覚化 */
+    .stat-container { background: #111; border: 1px solid #333; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+    .bar-label { font-size: 0.8rem; color: #888; margin-bottom: 2px; }
+    .hp-bar-bg { background: #222; width: 100%; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 8px; border: 1px solid #444; }
+    .hp-bar-fill { background: linear-gradient(90deg, #d4af37, #f1c40f); height: 100%; transition: width 0.5s; }
+    .shield-bar-fill { background: linear-gradient(90deg, #3498db, #2980b9); height: 100%; transition: width 0.5s; }
+    
     .briefing-card { background: #111; border: 1px solid #333; padding: 12px; border-radius: 5px; margin-bottom: 10px; }
     .briefing-title { color: #d4af37; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 3px;}
     .briefing-text { font-size: 0.7rem; color: #CCC; line-height: 1.4; }
+    
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
-        height: 40px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important;
+        height: 45px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important; font-weight: bold !important;
     }
-    .log-box { background: #000; border-top: 1px solid #333; padding: 4px 8px; height: 60px; font-size: 0.75rem; color: #CCC; margin-top: 15px; }
+    .log-box { background: #000; border-top: 1px solid #333; padding: 4px 8px; height: 60px; font-size: 0.8rem; color: #CCC; margin-top: 15px; font-family: monospace; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 修正版：音響インジェクター ---
+# --- 2. 確定音響エンジン ---
 def play_tone(tone_type):
-    """
-    ブラウザの AudioContext を直接叩いて音を出す。
-    """
+    # JavaScriptによる直接合成音
     scripts = {
-        "soft": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=300;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.3);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.3);",
-        "sharp": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='square';o.frequency.value=500;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
+        "soft": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=350;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.3);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.3);",
+        "sharp": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='square';o.frequency.value=440;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
         "mute": "const b=window.parent.document.querySelector('audio'); if(b){b.pause(); setTimeout(()=>b.play(), 5000);}"
     }
     st.components.v1.html(f"<script>{scripts[tone_type]}</script>", height=0)
@@ -43,9 +47,9 @@ def setup_bgm():
                 <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
                 <script>
                 const a = document.getElementById('bgm');
-                const playB = () => {{ if(a.paused) a.play(); }};
-                window.parent.document.addEventListener('mousedown', playB);
-                window.addEventListener('mousedown', playB);
+                const startAudio = () => {{ if(a.paused) a.play(); }};
+                window.parent.document.addEventListener('mousedown', startAudio);
+                window.addEventListener('mousedown', startAudio);
                 </script>
             """, height=0)
     except: pass
@@ -53,9 +57,9 @@ def setup_bgm():
 # --- 3. ステート管理 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
+        "p1": {"territory": 150.0, "max_territory": 150.0, "military": 0.0, "colony": 50.0, "max_colony": 100.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. クリックでオーディオ同期開始。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 本土防衛を開始せよ。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
@@ -73,20 +77,20 @@ def player_step(cmd):
         play_tone("soft"); p1["military"] += 25.0 * a_mul; p1["nuke_point"] += 20 * n_mul
         s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}")
     elif cmd == "DEF":
-        play_tone("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次回被害を50%軽減。")
+        play_tone("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 防御態勢を展開。")
     elif cmd == "MAR":
         play_tone("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃。")
+        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土へ{dmg:.0f}の打撃。")
     elif cmd == "OCC":
         play_tone("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul, 50.0)
-        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯+{steal:.0f}(敵損害なし)。")
+        p1["colony"] = min(p1["colony"] + steal, 200.0); s["logs"].insert(0, f"🚩占領: 緩衝地帯拡張。")
     elif cmd == "SPY":
         play_tone("sharp")
         if random.random() < spy_prob:
-            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功: 敵核開発妨害。")
+            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功: 核開発を妨害。")
         else: s["logs"].insert(0, "🕵️スパイ失敗。")
     elif cmd == "NUK":
-        play_tone("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告。静寂が訪れる。")
+        play_tone("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告。世界が静まり返る。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -105,17 +109,15 @@ def player_step(cmd):
 if s["phase"] == "DIFFICULTY":
     st.title("DEUS: 戦域選択")
     for d in ["小国", "大国", "超大国"]:
-        if st.button(d, key=d, use_container_width=True):
+        if st.button(d, use_container_width=True):
             s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦要綱")
     st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><div class="briefing-text">'
                 '・🛠軍拡: 軍備・核P増加。<br>・🛡防衛: 被弾50%カット。<br>・⚔️進軍: 敵領土への直接攻撃。<br>'
-                '・🚩占領: 盾(緩衝地帯)を拡張。<b>敵への損害は0。</b><br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時、全ての音が消える。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【国家特性】</span><div class="briefing-text">'
-                '・🔵連合国: 核速度2倍。スパイ成功率60%。<br>・🔴枢軸國: 攻撃1.5倍、占領1.2倍。防御弱。<br>・🛠社会主義国: 行動回数AP3。耐久200。攻撃弱。</div></div>', unsafe_allow_html=True)
-    if st.button("陣営選択へ", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
+                '・🚩占領: 緩衝地帯を拡張。敵損害なし。<br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時のみ無音化。</div></div>', unsafe_allow_html=True)
+    if st.button("進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
     st.title("陣営プロトコル")
@@ -123,12 +125,28 @@ elif s["phase"] == "FACTION":
     if c1.button("連合国", use_container_width=True): s["faction"]="連合国"; s["phase"]="GAME"; st.rerun()
     if c2.button("枢軸國", use_container_width=True): s["faction"]="枢軸國"; s["phase"]="GAME"; st.rerun()
     if c3.button("社会主義国", use_container_width=True): 
-        s["faction"]="社会主義国"; p1["territory"]=200.0; s["player_ap"]=3; s["max_ap"]=3; s["phase"]="GAME"; st.rerun()
+        s["faction"]="社会主義国"; p1["territory"]=200.0; p1["max_territory"]=200.0; s["player_ap"]=3; s["max_ap"]=3; s["phase"]="GAME"; st.rerun()
 
 elif s["phase"] == "GAME":
-    st.markdown(f'<div class="enemy-banner"><span class="enemy-text">敵領土: {p2["territory"]:.0f} | 敵核: {p2["nuke_point"]:.0f}/200</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="status-row"><div><span class="stat-label">本土</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
+    # 敵情報
+    st.markdown(f'<div class="enemy-banner"><span class="enemy-text">ENEMY TERRITORY: {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
+    
+    # 自国情報（視覚化）
+    hp_pct = max(p1["territory"] / p1["max_territory"] * 100, 0)
+    colony_pct = max(min(p1["colony"] / 100 * 100, 100), 0)
+    
+    st.markdown(f"""
+    <div class="stat-container">
+        <div class="bar-label">MAINLAND (本土生命線): {p1['territory']:.0f}</div>
+        <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: {hp_pct}%;"></div></div>
+        <div class="bar-label">BUFFER ZONE (緩衝地帯): {p1['colony']:.0f}</div>
+        <div class="hp-bar-bg"><div class="shield-bar-fill" style="width: {colony_pct}%;"></div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.caption(f"核開発進捗: {p1['nuke_point']}/200")
     st.progress(min(p1['nuke_point']/200.0, 1.0))
+    
     if p1["territory"] <= 0 or p2["territory"] <= 0:
         st.success("VICTORY" if p2["territory"] <= 0 else "DEFEAT")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
@@ -141,4 +159,5 @@ elif s["phase"] == "GAME":
         if c3.button("🕵️スパイ", use_container_width=True): player_step("SPY"); st.rerun()
         if c4.button("⚔️進軍", use_container_width=True): player_step("MAR"); st.rerun()
         if c5.button("🚩占領", use_container_width=True): player_step("OCC"); st.rerun()
-    st.markdown(f'<div class="log-box">{"".join([f"<div>{l}</div>" for l in s["logs"][:2]])}</div>', unsafe_allow_html=True)
+        
+    st.markdown(f'<div class="log-box">{"".join([f"<div>>> {l}</div>" for l in s["logs"][:2]])}</div>', unsafe_allow_html=True)
