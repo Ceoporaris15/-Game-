@@ -1,8 +1,9 @@
 import streamlit as st
 import random
+import base64
 
 # --- 1. 画面構成・モバイル最適化 ---
-st.set_page_config(page_title="DEUS: FINAL STRATEGY", layout="centered")
+st.set_page_config(page_title="DEUS: AUTOMATED WARFARE", layout="centered")
 
 st.markdown("""
     <style>
@@ -33,21 +34,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BGM再生システム (エラー回避機能付き) ---
-# GitHubに 'Vidnoz_AIMusic.mp3' がアップロードされている必要があります
-try:
-    with open('Vidnoz_AIMusic.mp3', 'rb') as f:
-        audio_bytes = f.read()
-        st.audio(audio_bytes, format='audio/mp3', loop=True, autoplay=True)
-except FileNotFoundError:
-    st.info("🎵 BGMを再生するには、GitHubに 'Vidnoz_AIMusic.mp3' をアップロードしてください。")
+# --- 2. BGM自動再生エンジン ---
+def play_bgm():
+    try:
+        with open('Vidnoz_AIMusic.mp3', 'rb') as f:
+            data = f.read()
+            # autoplay=True, loop=True を指定
+            st.audio(data, format='audio/mp3', loop=True, autoplay=True)
+    except FileNotFoundError:
+        st.info("🎵 BGMを有効にするには GitHubに 'Vidnoz_AIMusic.mp3' を配置してください。")
+
+# 常に再生を試みる
+play_bgm()
 
 # --- 3. システムステート初期化 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "nuke_point": 0, "shield_active": False},
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0},
-        "turn": 1, "logs": ["作戦待機中。陣営を選択せよ。"],
+        "turn": 1, "logs": ["システムオンライン。BGM同期完了。"],
         "player_ap": 2, "max_ap": 2, "wmd_charging": False,
         "difficulty": None, "faction": None
     }
@@ -55,40 +60,36 @@ if 'state' not in st.session_state:
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-# --- 4. 戦術ロジック関数 ---
+# --- 4. 戦術演算 ---
 def apply_damage_to_player(dmg):
-    success_rate = 0.3
-    if s["faction"] == "枢軸国": success_rate = 0.15
+    success_rate = 0.15 if s["faction"] == "枢軸国" else 0.3
     if p1["shield_active"]:
         if random.random() < success_rate:
             dmg = max(0, dmg - 40); s["logs"].insert(0, "🛡️ 防衛成功")
-        else: s["logs"].insert(0, "❌ 防衛失敗: 直撃")
+        else: s["logs"].insert(0, "❌ 防衛失敗")
     if p1["colony"] > 0:
         shield_amt = min(p1["colony"], dmg); p1["colony"] -= shield_amt; dmg -= shield_amt
     if dmg > 0: p1["territory"] = max(0, p1["territory"] - dmg)
-    s["logs"].insert(0, f"💥 本国被害: -{dmg:.1f}pts")
+    s["logs"].insert(0, f"💥 被害: -{dmg:.1f}pts")
 
 def ai_logic():
     actions = 1 if s["difficulty"] == "小国" else (2 if s["difficulty"] == "大国" else 6)
     for _ in range(actions):
         if p2["territory"] <= 0: break
-        # AIスパイ
         if random.random() < 0.25 and p1["nuke_point"] > 30:
-            p1["nuke_point"] = max(0, p1["nuke_point"] - 50); s["logs"].insert(0, "🕵️ DEUS工作: 核承認妨害")
+            p1["nuke_point"] = max(0, p1["nuke_point"] - 50); s["logs"].insert(0, "🕵️ DEUS工作: 核回路妨害")
             continue
-        # 核攻撃または通常攻撃
         if s["wmd_charging"]:
             nuke_dmg = p1["territory"] * (0.95 if s["difficulty"] == "超大国" else 0.5)
             apply_damage_to_player(nuke_dmg); s["wmd_charging"] = False
         else:
             if random.random() < (0.7 if s["difficulty"] == "超大国" else 0.2):
-                s["wmd_charging"] = True; s["logs"].insert(0, "🚨 DEUS: 核充填中")
+                s["wmd_charging"] = True; s["logs"].insert(0, "🚨 DEUS: 核充填開始")
             else:
                 p2_power = 2.5 if s["difficulty"] == "超大国" else 1.0
                 apply_damage_to_player(p2["military"] * 0.2 * p2_power)
 
 def player_step(cmd):
-    # 各陣営の補正
     expand_mul = 2.0 if s["faction"] == "社会主義国" else 1.0
     march_mul = 2.0 if s["faction"] in ["枢軸国", "社会主義国"] else 1.0
     nuke_mul = 2.0 if s["faction"] == "連合国" else 1.0
@@ -96,7 +97,7 @@ def player_step(cmd):
 
     if cmd == "EXPAND":
         p1["military"] += 25.0 * expand_mul; p1["nuke_point"] += 20 * nuke_mul
-        s["logs"].insert(0, f"🛠 軍拡: 承認P+{20*nuke_mul}")
+        s["logs"].insert(0, f"🛠 軍拡: 承認P増加")
     elif cmd == "DEFEND": p1["shield_active"] = True; s["logs"].insert(0, "🛡 防衛展開")
     elif cmd == "MARCH":
         dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * march_mul
@@ -120,16 +121,16 @@ def player_step(cmd):
 
 # --- 5. インターフェース ---
 if s["difficulty"] is None:
-    st.title("🚩 DEUS: LEVEL SELECT")
+    st.title("🚩 DEUS")
     cols = st.columns(3)
     if cols[0].button("小国"): s["difficulty"] = "小国"; p2["territory"] = 150.0; st.rerun()
     if cols[1].button("大国"): s["difficulty"] = "大国"; st.rerun()
     if cols[2].button("超大国"): s["difficulty"] = "超大国"; p2["territory"] = 2500.0; st.rerun()
 elif s["faction"] is None:
-    st.title("🛡️ CHOOSE FACTION")
-    if st.button("連合国 (核開発2倍 / スパイ裏切り大)"): s["faction"] = "連合国"; st.rerun()
-    if st.button("枢軸国 (進軍2倍 / 防御低確率)"): s["faction"] = "枢軸国"; st.rerun()
-    if st.button("社会主義国 (全能力2倍 / 1ターン1行動)"): 
+    st.title("🛡️ FACTION SELECT")
+    if st.button("連合国"): s["faction"] = "連合国"; st.rerun()
+    if st.button("枢軸国"): s["faction"] = "枢軸国"; st.rerun()
+    if st.button("社会主義国"): 
         s["faction"] = "社会主義国"; s["player_ap"] = 1; s["max_ap"] = 1; st.rerun()
 else:
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}pts</span></div>', unsafe_allow_html=True)
@@ -139,7 +140,7 @@ else:
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0 or p2["territory"] <= 0:
-        st.write("### 作戦完了: " + ("人類の勝利" if p2["territory"] <= 0 else "国家の終焉"))
+        st.write("### 作戦完了: " + ("勝利" if p2["territory"] <= 0 else "敗北"))
         if st.button("SYSTEM REBOOT"): st.session_state.clear(); st.rerun()
     else:
         st.write(f"**Turn {s['turn']} | AP: {s['player_ap']}**")
@@ -152,7 +153,7 @@ else:
         if cols[2].button("⚔️進軍"): player_step("MARCH"); st.rerun()
         if cols[3].button("🚩占領"): player_step("OCCUPY"); st.rerun()
         if cols[4].button("🕵️潜入"): player_step("SPY"); st.rerun()
-
+    
     st.write("---")
     log_html = "".join([f'<div>{log}</div>' for log in s["logs"][:4]])
     st.markdown(f'<div class="log-box">{log_html}</div>', unsafe_allow_html=True)
