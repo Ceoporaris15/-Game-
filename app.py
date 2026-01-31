@@ -2,25 +2,16 @@ import streamlit as st
 import random
 import base64
 
-# --- 1. 極限コンパクト・レイアウト ---
+# --- 1. レイアウト設定 ---
 st.set_page_config(page_title="DEUS", layout="centered")
 
 st.markdown("""
     <style>
-    html, body, [data-testid="stAppViewContainer"] {
-        background-color: #000; color: #FFF; overflow: hidden;
-    }
+    html, body, [data-testid="stAppViewContainer"] { background-color: #000; color: #FFF; overflow: hidden; }
     .stAudio { display: none; } 
-    .enemy-banner {
-        background-color: #200; border-bottom: 1px solid #F00;
-        padding: 4px; text-align: center; margin: -55px -15px 5px -15px;
-    }
+    .enemy-banner { background-color: #200; border-bottom: 1px solid #F00; padding: 4px; text-align: center; margin: -55px -15px 5px -15px; }
     .enemy-text { color: #F00; font-weight: bold; font-size: 1rem; letter-spacing: 3px; }
-    .status-row {
-        display: flex; justify-content: space-around;
-        background: #111; border: 1px solid #d4af37;
-        padding: 2px; margin-bottom: 5px; border-radius: 4px;
-    }
+    .status-row { display: flex; justify-content: space-around; background: #111; border: 1px solid #d4af37; padding: 2px; margin-bottom: 5px; border-radius: 4px; }
     .stat-label { font-size: 0.6rem; color: #888; margin-right: 4px; }
     .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
     .stProgress { height: 6px !important; margin-bottom: 2px !important; }
@@ -32,36 +23,27 @@ st.markdown("""
         background-color: #1a1a1a !important; color: #d4af37 !important;
         border: 1px solid #d4af37 !important; border-radius: 2px !important;
     }
-    .log-box {
-        background: #000; border-top: 1px solid #333;
-        padding: 4px 8px; height: 60px; font-size: 0.75rem; color: #CCC; 
-        line-height: 1.2; margin-top: 15px;
-    }
+    .log-box { background: #000; border-top: 1px solid #333; padding: 4px 8px; height: 60px; font-size: 0.75rem; color: #CCC; line-height: 1.2; margin-top: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 確定BGM同期 ---
+# --- 2. BGM同期 ---
 def setup_audio_engine():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
             data = f.read()
             b64 = base64.b64encode(data).decode()
-            audio_html = f"""
-                <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
-                <script>
-                    var audio = document.getElementById('bgm');
-                    window.parent.document.addEventListener('click', function() {{ audio.play(); }}, {{once: true}});
-                </script>
-            """
+            audio_html = f"""<audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
+            <script>var audio = document.getElementById('bgm'); window.parent.document.addEventListener('click', function() {{ audio.play(); }}, {{once: true}});</script>"""
             st.components.v1.html(audio_html, height=0)
     except: pass
 
-# --- 3. 初期化 ---
+# --- 3. システム初期化 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"territory": 150.0, "military": 0.0, "colony": 30.0, "nuke_point": 0, "shield": False},
+        "p1": {"territory": 150.0, "military": 0.0, "colony": 30.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM READY. 作戦を開始せよ。"],
+        "turn": 1, "logs": ["SYSTEM READY. 核開発を阻止せよ。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None
     }
 
@@ -74,8 +56,13 @@ def player_step(cmd):
     mul_nuk = 2.0 if s["faction"] == "連合国" else 1.0
     
     if cmd == "EXP":
-        p1["military"] += 25.0 * mul_exp; p1["nuke_point"] += 20 * mul_nuk
-        s["logs"].insert(0, "🛠軍拡: 戦力・核開発強化")
+        p1["military"] += 25.0 * mul_exp
+        # 核ロック中でなければ加算
+        if p1["nuke_lock"] <= 0:
+            p1["nuke_point"] += 20 * mul_nuk
+            s["logs"].insert(0, "🛠軍拡: 戦力・核開発強化")
+        else:
+            s["logs"].insert(0, f"🛠軍拡: 戦力強化(核開発は妨害中 残{p1['nuke_lock']}T)")
     elif cmd == "DEF": p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開")
     elif cmd == "MAR":
         dmg_val = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_mar
@@ -94,27 +81,34 @@ def player_step(cmd):
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
+        if p1["nuke_lock"] > 0: p1["nuke_lock"] -= 1 # 核ロックカウント減少
+        
         if p2["stun"] > 0:
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳DEUS再起動中({p2['stun']}T)")
         else:
-            enemy_dmg = 0.0 # 初期化してUnboundLocalErrorを防止
+            enemy_dmg = 0.0
             if s["difficulty"] == "小国":
                 enemy_dmg = 10.0
             elif s["difficulty"] == "大国":
                 enemy_dmg = 15.0 + (s["turn"] * 1.5)
-                if random.random() < 0.25: p1["nuke_point"] = max(0, p1["nuke_point"] - 30); s["logs"].insert(0, "🕵️敵諜報: 核妨害")
+                # 大国の核妨害スパイ（頻度高め）
+                if random.random() < 0.35: 
+                    p1["nuke_point"] = max(0, p1["nuke_point"] - 40)
+                    s["logs"].insert(0, "🕵️敵スパイ: 核開発施設を破壊(-40P)")
                 if random.random() < 0.2: p1["colony"] *= 0.5; s["logs"].insert(0, "🔥反乱: 植民地離反")
             elif s["difficulty"] == "超大国":
                 enemy_dmg = 10.0 + (s["turn"] * 2.0)
                 ev = random.random()
-                if ev < 0.15: p1["nuke_point"] = 0; s["logs"].insert(0, "☢️核封印: 核凍結")
-                elif ev < 0.30: s["max_ap"] = 1; s["logs"].insert(0, "⛓供給遮断: 恒久的なAP低下") # 永続デバフに変更
+                if ev < 0.25: # 超大国の核ロック（新型ギミック）
+                    p1["nuke_lock"] = 3
+                    p1["nuke_point"] = max(0, p1["nuke_point"] - 20)
+                    s["logs"].insert(0, "☢️核妨害: システム汚染(3T核開発不能)")
+                elif ev < 0.40: s["max_ap"] = 1; s["logs"].insert(0, "⛓供給遮断: 恒久的AP低下")
             
             if p1["shield"]: enemy_dmg *= 0.5
             p1["territory"] -= enemy_dmg
             s["logs"].insert(0, f"⚠️敵反撃: 被害{enemy_dmg:.0f}")
             
-        # AP回復とシールド解除
         s["player_ap"] = s["max_ap"]
         s["turn"] += 1
         p1["shield"] = False
@@ -135,7 +129,10 @@ elif s["faction"] is None:
 else:
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div><span class="stat-label">本国</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
-    st.markdown('<p class="nuke-title">☢️ 核開発進行状況</p>', unsafe_allow_html=True)
+    
+    # 核開発状況（ロック中の色変化などはなしでシンプルに）
+    lock_msg = " (LOCK中)" if p1["nuke_lock"] > 0 else ""
+    st.markdown(f'<p class="nuke-title">☢️ 核兵器開発進行状況{lock_msg}</p>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0:
