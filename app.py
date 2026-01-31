@@ -14,9 +14,10 @@ st.markdown("""
     .stat-label { font-size: 0.6rem; color: #888; margin-right: 4px; }
     .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
     .stProgress { height: 6px !important; margin-bottom: 2px !important; }
+    .nuke-title { color: #007BFF; font-weight: bold; font-size: 0.7rem; margin: 0; }
     .briefing-card { background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; margin-bottom: 10px; }
     .briefing-title { color: #d4af37; font-weight: bold; font-size: 1.1rem; }
-    .briefing-text { font-size: 0.85rem; color: #CCC; }
+    .briefing-text { font-size: 0.85rem; color: #CCC; line-height: 1.5; }
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
         height: 30px !important; font-size: 0.8rem !important;
         background-color: #1a1a1a !important; color: #d4af37 !important;
@@ -48,7 +49,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 警告：本土への貫通ダメージを確認。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 状況を確認せよ。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
@@ -58,6 +59,7 @@ p1, p2 = s["p1"], s["p2"]
 
 setup_audio_engine()
 
+# --- アクション実行関数 ---
 def player_step(cmd):
     mul_pwr = 0.25 if s["faction"] == "社会主義国" else 1.0
     mul_nuk = 2.0 if s["faction"] == "連合国" else 1.0
@@ -67,30 +69,28 @@ def player_step(cmd):
     if cmd == "EXP":
         p1["military"] += 25.0 * mul_pwr
         if p1["nuke_lock"] <= 0: p1["nuke_point"] += 20 * mul_nuk
-        s["logs"].insert(0, "🛠軍拡: 戦力増強を優先。")
+        s["logs"].insert(0, "🛠軍拡: 軍備と核開発を進行。")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 全ラインの警戒を強化。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃シールドを展開。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_pwr + 10.0, 10.0)
         if p2["stun"] <= 0 and random.random() < 0.30:
-            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に抑えられた。")
+            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 打撃を{dmg:.0f}に抑えられた。")
         else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: {dmg:.0f}の戦果。")
+            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵地に{dmg:.0f}の損害。")
     elif cmd == "OCC":
-        # --- 占領の下方修正 (従来の半分へ) ---
         cost = max(15.0 * mul_pwr, 5.0)
         if p1["military"] >= cost:
             p1["military"] -= cost
-            # 吸収率 30% -> 15% / 固定値 20 -> 10 に半減
             steal = (max(p2["territory"] * 0.15, 25.0) * mul_pwr) + 10.0
             p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, f"🚩占領: 限定的な領土獲得 (+{steal:.0f})。")
+            s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張（限定獲得）。")
     elif cmd == "SPY":
         if random.random() < spy_prob:
-            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵防御を一時停止。")
-        else: s["logs"].insert(0, "🕵️工作失敗: 敵に察知された。")
+            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵防御網を一時無効化。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 潜入員が未帰還。")
     elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終審判。")
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告: 世界が静まり返った。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -103,24 +103,28 @@ def player_step(cmd):
             if s["difficulty"] == "超大国": total_e_dmg *= 1.2
             if p1["shield"]: total_e_dmg *= shield_eff
             
-            # --- ダメージ分散ロジック (植民地 80% / 本土 20%) ---
             if p1["colony"] > 0:
                 colony_dmg = total_e_dmg * 0.8
                 homeland_dmg = total_e_dmg * 0.2
                 p1["colony"] -= colony_dmg
                 p1["territory"] -= homeland_dmg
                 if p1["colony"] < 0:
-                    # 植民地不足分は本土へ貫通
-                    p1["territory"] += p1["colony"]
-                    p1["colony"] = 0
-                s["logs"].insert(0, f"🚨警告: 被弾！(本土:{homeland_dmg:.0f} / 緩衝:{colony_dmg:.0f})")
+                    p1["territory"] += p1["colony"]; p1["colony"] = 0
+                s["logs"].insert(0, f"⚠️被弾: (本土:{homeland_dmg:.0f} / 緩衝:{colony_dmg:.0f})")
             else:
                 p1["territory"] -= total_e_dmg
-                s["logs"].insert(0, f"🚨直撃: 本土へ{total_e_dmg:.0f}の壊滅的打撃！")
+                s["logs"].insert(0, f"🚨警告: 本土へ{total_e_dmg:.0f}の直撃！")
+
+            # 難易度別核妨害
+            if s["difficulty"] == "大国" and random.random() < 0.4:
+                p1["nuke_point"] = max(0, p1["nuke_point"] - 35); s["logs"].insert(0, "🕵️敵工作: 核開発が遅延。")
+            elif s["difficulty"] == "超大国":
+                if random.random() < 0.3: p1["nuke_lock"] = 2; s["logs"].insert(0, "☢️核ハック: 開発停止。")
+                elif random.random() < 0.2: p1["nuke_point"] = 0; s["logs"].insert(0, "☣️データ消去。")
         
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
-# --- UI (各フェーズ) ---
+# --- UIフェーズ制御 ---
 if s["phase"] == "DIFFICULTY":
     st.title("難易度設定")
     if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
@@ -129,10 +133,16 @@ if s["phase"] == "DIFFICULTY":
 
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ 作戦ブリーフィング")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【防衛ドクトリンの変更】</span><br>'
-                '<span class="briefing-text">・緩衝地帯があっても<b>ダメージの20%は本土へ貫通</b>します。<br>'
-                '・占領による領土拡大効率が<b>50%低下</b>しました。</span></div>', unsafe_allow_html=True)
-    if st.button("次へ", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション解説】</span><br>'
+                '<span class="briefing-text">・🛠軍拡: 戦力増強と核開発。<br>'
+                '・⚔️進軍: 敵を攻撃。スパイで防御を崩すと効果的。<br>'
+                '・🚩占領: 敵地を奪い「緩衝地帯」を形成。盾にする（獲得量は制限中）。<br>'
+                '・🕵️スパイ: 敵防御を2ターン無力化。直接ダメージは無し。<br>'
+                '・🛡防衛: 次の攻撃を軽減。本土への貫通を抑える。</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【重要：ダメージ分散ドクトリン】</span><br>'
+                '<span class="briefing-text">敵の攻撃の<b>80%は緩衝地帯</b>が吸収しますが、<b>20%は本土へ貫通</b>します。<br>'
+                '本土が崩壊すれば敗北です。盾があっても油断は禁物です。</span></div>', unsafe_allow_html=True)
+    if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
     st.title("陣営プロトコル")
