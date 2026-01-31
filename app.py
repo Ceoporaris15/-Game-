@@ -15,8 +15,8 @@ st.markdown("""
     .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
     .stProgress { height: 6px !important; margin-bottom: 2px !important; }
     .briefing-card { background: #111; border: 1px solid #333; padding: 12px; border-radius: 5px; margin-bottom: 10px; }
-    .briefing-title { color: #d4af37; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 3px;}
-    .briefing-text { font-size: 0.75rem; color: #CCC; line-height: 1.5; }
+    .briefing-title { color: #d4af37; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 3px;}
+    .briefing-text { font-size: 0.7rem; color: #CCC; line-height: 1.4; }
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
         height: 30px !important; font-size: 0.8rem !important;
         background-color: #1a1a1a !important; color: #d4af37 !important;
@@ -48,7 +48,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 占領/攻撃の分離完了。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 全アクション・ドクトリン同期完了。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
@@ -57,9 +57,8 @@ s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 setup_audio_engine()
 
-# --- 4. コマンド・ロジック ---
+# --- 4. ロジック ---
 def player_step(cmd):
-    # 陣営パラメータ
     if s["faction"] == "連合国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.0, 1.0, 1.0, 2.0, 0.60
     elif s["faction"] == "枢軸国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.5, 0.8, 1.2, 1.0, 0.33
     else: a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
@@ -67,9 +66,9 @@ def player_step(cmd):
     if cmd == "EXP":
         p1["military"] += 25.0 * a_mul
         p1["nuke_point"] += 20 * n_mul
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}。核開発加速。")
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}/核+{20*n_mul:.0f}")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次の被ダメージを大幅軽減。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次の被弾を50%軽減。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
         if p2["stun"] <= 0 and random.random() < 0.30:
@@ -77,27 +76,22 @@ def player_step(cmd):
         else:
             p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土へ{dmg:.0f}の打撃。")
     elif cmd == "OCC":
-        # 敵領土は減らさず、植民地のみを増加（盾の構築）
         calc_steal = ((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul
         steal = min(calc_steal, 50.0)
         p1["colony"] += steal
-        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張(敵被害なし)。")
+        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張(敵への被害なし)。")
     elif cmd == "SPY":
         if random.random() < spy_prob:
             p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
             s["logs"].insert(0, "🕵️工作成功: 敵核開発妨害(-50) & 麻痺。")
-        else: s["logs"].insert(0, "🕵️工作失敗: 工作員との通信途絶。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 通信が途絶。")
     elif cmd == "NUK":
         p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
-        # AIの核開発加速
-        ai_nuke_gain = 25.0 + (10.0 if s["difficulty"] == "超大国" else 0)
-        p2["nuke_point"] += ai_nuke_gain
-        
-        if p2["stun"] > 0:
-            p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中({p2['stun']}T)")
+        p2["nuke_point"] += (25.0 + (10.0 if s["difficulty"] == "超大国" else 0))
+        if p2["stun"] > 0: p2["stun"] -= 1
         else:
             if p2["nuke_point"] >= 200:
                 p1["territory"] *= 0.3; p2["nuke_point"] = 0
@@ -110,14 +104,10 @@ def player_step(cmd):
                     col_dmg, home_dmg = total_e_dmg * 0.8, total_e_dmg * 0.2
                     p1["colony"] -= col_dmg; p1["territory"] -= home_dmg
                     if p1["colony"] < 0: p1["territory"] += p1["colony"]; p1["colony"] = 0
-                    s["logs"].insert(0, f"⚠️被弾: 本土-{home_dmg:.0f} / 緩衝-{col_dmg:.0f}")
-                else:
-                    p1["territory"] -= total_e_dmg
-                    s["logs"].insert(0, f"🚨警告: 本土へ{total_e_dmg:.0f}の直撃！")
-        
+                else: p1["territory"] -= total_e_dmg
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
-# --- 5. UIフェーズ ---
+# --- 5. UI ---
 if s["phase"] == "DIFFICULTY":
     st.title("DEUS: 戦域選択")
     if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
@@ -125,15 +115,18 @@ if s["phase"] == "DIFFICULTY":
     if st.button("超大国 (Hard)", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
-    st.title("🛡️ DEUS 作戦要綱")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><br>'
-                '<div class="briefing-text">・<b>🚩占領</b>: 緩衝地帯(盾)を増やします。敵にダメージは与えません。<br>'
-                '・<b>⚔️進軍</b>: 敵領土を直接破壊する唯一の通常手段です。<br>'
-                '・<b>🕵️スパイ</b>: 敵の核開発を-50ポイント妨害し、2ターン麻痺させます。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【国家ドクトリン】</span><br>'
-                '<div class="briefing-text">・<b>🔵連合国</b>: 核開発2倍、スパイ成功率60%。核による早期終結向け。<br>'
-                '・<b>🔴枢軸国</b>: 攻撃1.5倍、占領1.2倍の高火力。ただし防御0.8倍と脆い。<br>'
-                '・<b>🛠社会主義国</b>: 3回行動(AP3)が可能。長期的な物量作戦向け。</div></div>', unsafe_allow_html=True)
+    st.title("🛡️ DEUS 作戦マニュアル")
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション詳細説明】</span><div class="briefing-text">'
+                '・<b>🛠軍拡</b>: 軍事力+25/核P+20。攻撃と最終兵器の基盤。<br>'
+                '・<b>🛡防衛</b>: 1Tのみ被弾ダメージを50%カット。<br>'
+                '・<b>⚔️進軍</b>: 敵領土を直接破壊。勝利への必須手段。<br>'
+                '・<b>🚩占領</b>: 緩衝地帯(盾)を拡張。<b>敵には無害</b>。ダメージを80%肩代わり。<br>'
+                '・<b>🕵️スパイ</b>: 敵核Pを-50し、敵の防御行動を2T封じます。<br>'
+                '・<b>☢️核兵器</b>: 核P200で発動。敵領土を残り15%まで焼き払います。</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【国家特性】</span><div class="briefing-text">'
+                '・<b>🔵連合国</b>: 核開発速度2倍。スパイ成功率60%。核速攻向け。<br>'
+                '・<b>🔴枢軸国</b>: 攻撃1.5倍、占領1.2倍。防御0.8倍(脆い)。短期決戦型。<br>'
+                '・<b>🛠社会主義国</b>: 行動回数AP3。耐久200。攻撃0.5倍。持久戦向け。</div></div>', unsafe_allow_html=True)
     if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
@@ -148,7 +141,6 @@ elif s["phase"] == "GAME":
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">敵領土: {p2["territory"]:.0f} | 敵核: {p2["nuke_point"]:.0f}/200</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div><span class="stat-label">本土</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
-
     if p1["territory"] <= 0 or p2["territory"] <= 0:
         st.success("VICTORY" if p2["territory"] <= 0 else "DEFEAT")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
