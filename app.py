@@ -48,7 +48,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. スパイによる核抑制機能、実装。"],
+        "turn": 1, "logs": ["⚠️ 警告: 敵の核開発速度が加速しています。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
@@ -66,42 +66,44 @@ def player_step(cmd):
     if cmd == "EXP":
         p1["military"] += 25.0 * a_mul
         p1["nuke_point"] += 20 * n_mul
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}。核開発も進行。")
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}。核開発中。")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃シールド展開。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド出力を最大化。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
         if p2["stun"] <= 0 and random.random() < 0.30:
             dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に抑えられた。")
         else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土に{dmg:.0f}の打撃。")
+            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵地に{dmg:.0f}の打撃。")
     elif cmd == "OCC":
         calc_steal = ((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul
         steal = min(calc_steal, 50.0)
         p2["territory"] -= steal; p1["colony"] += steal
-        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}獲得。")
+        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張。")
     elif cmd == "SPY":
         if random.random() < spy_prob:
             p2["stun"] = 2
-            p2["nuke_point"] = max(0, p2["nuke_point"] - 50) # 核抑制効果
-            s["logs"].insert(0, "🕵️工作成功: 敵防御停止 & 核実験を阻止(-50)。")
-        else: s["logs"].insert(0, "🕵️工作失敗: スパイが拘束された。")
+            p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
+            s["logs"].insert(0, "🕵️工作成功: 核実験場を爆破(-50) & 2T麻痺。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 工作員が消息不明。")
     elif cmd == "NUK":
         p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
-        # --- AIのターン ---
-        p2["nuke_point"] += 15 # AIも核開発を行う
+        # --- AIの核開発加速ロジック ---
+        ai_nuke_gain = 25.0 # 基本開発力 (プレイヤーより高い)
+        if s["difficulty"] == "超大国": ai_nuke_gain += 10.0
+        p2["nuke_point"] += ai_nuke_gain
         
         if p2["stun"] > 0:
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中({p2['stun']}T)")
         else:
-            # AIの意思決定：核使用の判断
-            if p2["nuke_point"] >= 200 and p1["territory"] > 30:
-                # 本土がまだ健在なら使用するが、リスク判断（ここではシンプルに発動）
+            # AIの意思決定
+            if p2["nuke_point"] >= 200:
+                # 本土領土が健在なら核を迷わず使用
                 p1["territory"] *= 0.3; p2["nuke_point"] = 0
-                s["logs"].insert(0, "☢️敵最終宣告: 世界が震えた。")
+                s["logs"].insert(0, "☢️敵最終宣告: 凄まじい閃光が本土を襲う。")
             else:
                 p2["military"] += 20.0
                 total_e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_mul)
@@ -127,9 +129,9 @@ if s["phase"] == "DIFFICULTY":
 
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦要綱")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><br>'
-                '<div class="briefing-text">・<b>🕵️スパイ</b>: 敵防御を2ターン封じるだけでなく、<b>敵の核開発ポイントを減少</b>させます。<br>'
-                '・<b>🚩占領</b>: 1回の獲得上限は50。盾として機能しますが、20%のダメージは常に貫通します。</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【戦況警告】</span><br>'
+                '<div class="briefing-text">・<b>☢️核競争</b>: AIは毎ターン25P（超大国では35P）の核開発を行います。<br>'
+                '・<b>🕵️スパイ</b>: 敵の核ポイントを<b>直接50減少</b>させることが可能です。</div></div>', unsafe_allow_html=True)
     if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
