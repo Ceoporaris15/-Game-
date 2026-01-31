@@ -48,7 +48,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 占領上限リミッター：ACTIVE."],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 占領ドクトリンを更新しました。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
@@ -58,7 +58,7 @@ p1, p2 = s["p1"], s["p2"]
 
 setup_audio_engine()
 
-# --- 4. アクション・ドクトリン ---
+# --- 4. ロジック実行 ---
 def player_step(cmd):
     mul_pwr = 0.25 if s["faction"] == "社会主義国" else 1.0
     mul_nuk = 2.0 if s["faction"] == "連合国" else 1.0
@@ -68,33 +68,32 @@ def player_step(cmd):
     if cmd == "EXP":
         p1["military"] += 25.0 * mul_pwr
         if p1["nuke_lock"] <= 0: p1["nuke_point"] += 20 * mul_nuk
-        s["logs"].insert(0, "🛠軍拡: 軍備と核開発を並行実施。")
+        s["logs"].insert(0, "🛠軍拡: 軍備と核開発。")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃体制を最大化。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃率が向上。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_pwr + 10.0, 10.0)
         if p2["stun"] <= 0 and random.random() < 0.30:
-            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に減衰された。")
+            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 打撃を{dmg:.0f}に減衰。")
         else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵地に{dmg:.0f}の致命打。")
+            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵地に{dmg:.0f}の打撃。")
     elif cmd == "OCC":
-        # --- 占領上限 50 の厳格適用 ---
+        # --- 占領獲得上限 50 / 総量上限なし ---
         cost = max(15.0 * mul_pwr, 5.0)
         if p1["military"] >= cost:
             p1["military"] -= cost
-            # 計算上の獲得量
-            steal = (max(p2["territory"] * 0.15, 25.0) * mul_pwr) + 10.0
-            # リミッター発動
-            if steal > 50.0: steal = 50.0
+            # 1回あたりの計算
+            raw_steal = (max(p2["territory"] * 0.15, 25.0) * mul_pwr) + 10.0
+            steal = min(raw_steal, 50.0) # 獲得上限のみ50に設定
             
             p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張（上限適用済）。")
+            s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張（蓄積開始）。")
     elif cmd == "SPY":
         if random.random() < spy_prob:
-            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵の迎撃システムが沈黙。")
-        else: s["logs"].insert(0, "🕵️工作失敗: 諜報網が遮断された。")
+            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵防御網を無力化。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 敵の監視網に捕捉された。")
     elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告: 文明をリセット。")
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -111,7 +110,7 @@ def player_step(cmd):
                 colony_dmg, homeland_dmg = total_e_dmg * 0.8, total_e_dmg * 0.2
                 p1["colony"] -= colony_dmg; p1["territory"] -= homeland_dmg
                 if p1["colony"] < 0: p1["territory"] += p1["colony"]; p1["colony"] = 0
-                s["logs"].insert(0, f"⚠️被弾: 本土への貫通-{homeland_dmg:.0f} / 緩衝-{colony_dmg:.0f}")
+                s["logs"].insert(0, f"⚠️被弾: 本土-{homeland_dmg:.0f} / 緩衝-{colony_dmg:.0f}")
             else:
                 p1["territory"] -= total_e_dmg
                 s["logs"].insert(0, f"🚨警告: 本土へ{total_e_dmg:.0f}の直撃！")
@@ -120,23 +119,17 @@ def player_step(cmd):
 
 # --- 5. UIフェーズ ---
 if s["phase"] == "DIFFICULTY":
-    st.title("DEUS: 戦域選択")
-    if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
-    if st.button("大国 (Normal)", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
-    if st.button("超大国 (Hard)", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
+    st.title("難易度設定")
+    if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
+    if st.button("大国", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
+    if st.button("超大国", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
-    st.title("🛡️ DEUS 作戦ブリーフィング")
+    st.title("🛡️ DEUS 作戦要綱")
     st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><br>'
-                '<div class="briefing-text">・<b>🛠軍拡</b>: 戦力と核開発を進める。核は後半の切り札。<br>'
-                '・<b>⚔️進軍</b>: 主力攻撃。スパイ中は敵の防御を無視できる。<br>'
-                '・<b>🚩占領</b>: 緩衝地帯を奪う。上限は一度に<b>50</b>。防御の80%を担う。<br>'
-                '・<b>🕵️スパイ</b>: 敵防御を2ターン無力化。成功率に陣営差あり。<br>'
-                '・<b>🛡防衛</b>: 敵威力を半減。本土への20%ダメージも軽減される。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【陣営特性：ドクトリン】</span><br>'
-                '<div class="briefing-text">・<b>🔵連合国</b>: 高い諜報(60%)と、他国の2倍速い核開発。<br>'
-                '・<b>🔴枢軸国</b>: 高火力を誇るが、防衛が弱く本土の消耗が激しい。<br>'
-                '・<b>🛠社会主義国</b>: 3回行動(AP3)と高い本土耐久。手数で圧倒する長期戦型。</div></div>', unsafe_allow_html=True)
+                '<div class="briefing-text">・<b>🚩占領</b>: 一度の獲得量は<b>最大50</b>に制限されますが、<b>蓄積される総量に上限はありません</b>。何度も繰り返すことで巨大な防壁を築けます。<br>'
+                '・<b>🕵️スパイ</b>: 敵の「防御（ダメージ半減）」を無力化することに特化。直接ダメージはありません。<br>'
+                '・<b>⚠️ダメージ分散</b>: 緩衝地帯がどれほど厚くても、<b>敵攻撃の20%は常に本土へ貫通</b>します。</div></div>', unsafe_allow_html=True)
     if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
