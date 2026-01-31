@@ -23,18 +23,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 物理音響インジェクター ---
-def inject_sound(sound_type):
+# --- 2. 修正版：音響インジェクター ---
+def play_tone(tone_type):
     """
-    ボタンクリック時に直接JavaScriptを走らせて音を出す。
-    Streamlitの再レンダリングを利用して実行。
+    ブラウザの AudioContext を直接叩いて音を出す。
     """
-    js_tones = {
-        "soft": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=220;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.2);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.2);",
-        "sharp": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='square';o.frequency.value=660;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
-        "mute": "const b=window.parent.document.getElementById('bgm'); if(b){b.pause(); setTimeout(()=>b.play(), 5000);}"
+    scripts = {
+        "soft": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=300;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.3);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.3);",
+        "sharp": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='square';o.frequency.value=500;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
+        "mute": "const b=window.parent.document.querySelector('audio'); if(b){b.pause(); setTimeout(()=>b.play(), 5000);}"
     }
-    st.components.v1.html(f"<script>{js_tones[sound_type]}</script>", height=0)
+    st.components.v1.html(f"<script>{scripts[tone_type]}</script>", height=0)
 
 def setup_bgm():
     try:
@@ -44,7 +43,9 @@ def setup_bgm():
                 <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
                 <script>
                 const a = document.getElementById('bgm');
-                window.parent.document.addEventListener('click', () => {{ if(a.paused) a.play(); }}, {{once:false}});
+                const playB = () => {{ if(a.paused) a.play(); }};
+                window.parent.document.addEventListener('mousedown', playB);
+                window.addEventListener('mousedown', playB);
                 </script>
             """, height=0)
     except: pass
@@ -54,7 +55,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. クリックで音響同期開始。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. クリックでオーディオ同期開始。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
@@ -64,29 +65,28 @@ setup_bgm()
 
 # --- 4. ロジック ---
 def player_step(cmd):
-    # パラメータ設定
-    if s["faction"] == "連合国": a_m, d_m, o_m, n_m, sp_p = 1.0, 1.0, 1.0, 2.0, 0.60
-    elif s["faction"] == "枢軸國": a_m, d_m, o_m, n_m, sp_p = 1.5, 0.8, 1.2, 1.0, 0.33
-    else: a_m, d_m, o_m, n_m, sp_p = 0.5, 0.8, 1.0, 1.0, 0.33
+    if s["faction"] == "連合国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.0, 1.0, 1.0, 2.0, 0.60
+    elif s["faction"] == "枢軸國": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.5, 0.8, 1.2, 1.0, 0.33
+    else: a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
 
     if cmd == "EXP":
-        inject_sound("soft"); p1["military"] += 25.0 * a_m; p1["nuke_point"] += 20 * n_m
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_m:.0f}")
+        play_tone("soft"); p1["military"] += 25.0 * a_mul; p1["nuke_point"] += 20 * n_mul
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}")
     elif cmd == "DEF":
-        inject_sound("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開。")
+        play_tone("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次回被害を50%軽減。")
     elif cmd == "MAR":
-        inject_sound("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_m + 10.0, 10.0)
+        play_tone("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
         p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃。")
     elif cmd == "OCC":
-        inject_sound("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_m, 50.0)
+        play_tone("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul, 50.0)
         p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯+{steal:.0f}(敵損害なし)。")
     elif cmd == "SPY":
-        inject_sound("sharp")
-        if random.random() < sp_p:
-            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功: 核妨害。")
+        play_tone("sharp")
+        if random.random() < spy_prob:
+            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功: 敵核開発妨害。")
         else: s["logs"].insert(0, "🕵️スパイ失敗。")
     elif cmd == "NUK":
-        inject_sound("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告。静寂が訪れる。")
+        play_tone("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告。静寂が訪れる。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -95,7 +95,7 @@ def player_step(cmd):
         else:
             if p2["nuke_point"] >= 200: p1["territory"] *= 0.3; p2["nuke_point"] = 0
             else:
-                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_m)
+                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_mul)
                 if p1["shield"]: e_dmg *= 0.5
                 if p1["colony"] > 0: p1["colony"] -= e_dmg * 0.8; p1["territory"] -= e_dmg * 0.2
                 else: p1["territory"] -= e_dmg
@@ -105,7 +105,7 @@ def player_step(cmd):
 if s["phase"] == "DIFFICULTY":
     st.title("DEUS: 戦域選択")
     for d in ["小国", "大国", "超大国"]:
-        if st.button(d, use_container_width=True):
+        if st.button(d, key=d, use_container_width=True):
             s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
