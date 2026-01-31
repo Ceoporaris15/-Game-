@@ -39,7 +39,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 確定BGM同期プロトコル ---
+# --- 2. 確定BGM同期 ---
 def setup_audio_engine():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
@@ -49,7 +49,6 @@ def setup_audio_engine():
                 <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
                 <script>
                     var audio = document.getElementById('bgm');
-                    window.parent.document.addEventListener('touchstart', function() {{ audio.play(); }}, {{once: true}});
                     window.parent.document.addEventListener('click', function() {{ audio.play(); }}, {{once: true}});
                 </script>
             """
@@ -60,8 +59,8 @@ def setup_audio_engine():
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 30.0, "nuke_point": 0, "shield": False},
-        "p2": {"territory": 650.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM READY. タップでBGM開始。"],
+        "p2": {"territory": 800.0, "stun": 0}, 
+        "turn": 1, "logs": ["SYSTEM READY. 作戦を開始せよ。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None
     }
 
@@ -76,42 +75,52 @@ def player_step(cmd):
 
     if cmd == "EXP":
         p1["military"] += 25.0 * mul_exp; p1["nuke_point"] += 20 * mul_nuk
-        s["logs"].insert(0, f"🛠軍拡: 核P+{20*mul_nuk}")
-    elif cmd == "DEF": p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開")
+        s["logs"].insert(0, "🛠軍拡: 戦力と核開発を強化")
+    elif cmd == "DEF": p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃シールド展開")
     elif cmd == "MAR":
         dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_mar
-        if s["difficulty"] == "超大国": dmg *= 0.1
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵に{dmg:.0f}ダメ")
+        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃")
     elif cmd == "OCC":
         if p1["military"] >= 20:
             p1["military"] -= 20; steal = max(p2["territory"] * 0.2, 40.0)
-            p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🚩占領: 緩衝地拡大")
+            p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🚩占領: 敵領土を吸収")
     elif cmd == "SPY":
         if random.random() < 0.33:
             p2["territory"] *= 0.9; p2["stun"] = 2
-            s["logs"].insert(0, "🕵️諜報成功: 敵を2T停止 & 領土削取")
-        else: s["logs"].insert(0, "🕵️諜報失敗: 工作員が消失")
+            s["logs"].insert(0, "🕵️工作成功: 敵を2T停止 & 10%破壊")
+        else: s["logs"].insert(0, "🕵️工作失敗: スパイが処刑された")
     elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️核執行: 敵地消滅")
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️核執行: 焦土と化した")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
         if p2["stun"] > 0:
-            p2["stun"] -= 1; s["logs"].insert(0, f"⏳DEUS: 再起動中({p2['stun']}T)")
+            p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中... 残り{p2['stun']}T")
         else:
-            # 超大国の漸増攻撃ロジック
-            base_dmg = 12.0
-            if s["difficulty"] == "超大国":
-                # ターンごとに威力が上がる（10Tを超えると本気を出す）
-                base_dmg = (p2["territory"] * (0.02 + (s["turn"] * 0.005)))
+            # --- 敵の行動ロジック ---
+            if s["difficulty"] == "大国":
+                # 大国：物量と妨害（スパイ）
+                dmg = 15.0 + (s["turn"] * 1.5)
+                if random.random() < 0.25: # スパイ
+                    p1["nuke_point"] = max(0, p1["nuke_point"] - 30)
+                    s["logs"].insert(0, "🕵️大国スパイ: 核開発を妨害された")
+                if random.random() < 0.2: # 反乱
+                    p1["colony"] *= 0.5; s["logs"].insert(0, "🔥反乱: 植民地が離反")
             
-            # 確率で植民地反乱
-            if random.random() < 0.15 and p1["colony"] > 10:
-                p1["colony"] *= 0.7; s["logs"].insert(0, "🔥反乱: 緩衝地が縮小")
+            elif s["difficulty"] == "超大国":
+                # 超大国：テクニカルなギミック
+                dmg = 10.0 + (s["turn"] * 2.0)
+                event = random.random()
+                if event < 0.15: # 核ジャック
+                    p1["nuke_point"] = 0; s["logs"].insert(0, "☢️核封印: DEUSが核システムを凍結")
+                elif event < 0.30: # 資源ロック
+                    s["player_ap"] = 1; s["logs"].insert(0, "⛓供給遮断: 次の行動回数が減少")
+                elif event < 0.45: # 領土汚染
+                    p1["territory"] -= 25; s["logs"].insert(0, "☣️汚染: 本国領土が急激に減少")
             
-            if p1["shield"]: base_dmg *= 0.5
-            p1["territory"] -= base_dmg
-            s["logs"].insert(0, f"⚠️反撃: 本国-{base_dmg:.0f}")
+            if p1["shield"]: dmg *= 0.5
+            p1["territory"] -= dmg
+            s["logs"].insert(0, f"⚠️敵攻撃: 本国被害 {dmg:.0f}")
 
         s["player_ap"], s["turn"], p1["shield"] = s["max_ap"], s["turn"] + 1, False
 
@@ -120,9 +129,9 @@ setup_audio_engine()
 
 if s["difficulty"] is None:
     st.title("難易度選択")
-    if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; st.rerun()
-    if st.button("大国", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 650.0; st.rerun()
-    if st.button("超大国", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 3500.0; st.rerun()
+    if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; st.rerun()
+    if st.button("大国 (Heavy Mass)", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 1000.0; st.rerun()
+    if st.button("超大国 (Tactical AI)", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; st.rerun()
 elif s["faction"] is None:
     st.title("陣営プロトコル")
     if st.button("連合国", use_container_width=True): s["faction"] = "連合国"; st.rerun()
@@ -135,13 +144,13 @@ else:
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0:
-        st.error("【敗北】次はもっと冷酷に。")
+        st.error("【敗北】亡国の時。")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
     elif p2["territory"] <= 0:
-        st.success("【勝利】世界は貴公のもの。")
+        st.success("【勝利】世界は平定された。")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
     else:
-        st.caption(f"T-{s['turn']} | AP: {s['player_ap']} {' (敵スタン中)' if p2['stun'] > 0 else ''}")
+        st.caption(f"T-{s['turn']} | AP: {s['player_ap']}")
         if p1["nuke_point"] >= 200:
             if st.button("☢️ 最終宣告執行", type="primary", use_container_width=True): player_step("NUK"); st.rerun()
         
