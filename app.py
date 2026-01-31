@@ -23,61 +23,65 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. オーディオエンジン (Web Audio API 安定版) ---
-def play_audio(type):
-    # JavaScriptを直接注入して音を鳴らす
-    js_code = {
-        "soft": """
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.type = 'sine'; osc.frequency.setValueAtTime(440, ctx.currentTime);
-            gain.gain.setValueAtTime(0.1, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.start(); osc.stop(ctx.currentTime + 0.1);
-        """,
-        "sharp": """
-            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.type = 'square'; osc.frequency.setValueAtTime(880, ctx.currentTime);
-            gain.gain.setValueAtTime(0.05, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.start(); osc.stop(ctx.currentTime + 0.1);
-        """,
-        "mute": """
-            var bgm = window.parent.document.getElementById('bgm_player');
-            if(bgm) { bgm.pause(); setTimeout(function(){ bgm.play(); }, 5000); }
-        """
+# --- 2. 究極音響エンジン (強制アクティベーション) ---
+def trigger_audio(audio_type):
+    # ユーザーのクリック直後にAudioContextをレジュームさせるJS
+    js_audio = {
+        "soft": "playTone(220, 'sine', 0.1);",
+        "sharp": "playTone(880, 'square', 0.1);",
+        "mute": "stopBGM();"
     }
-    st.components.v1.html(f"<script>{js_code.get(type, '')}</script>", height=0)
+    st.components.v1.html(f"""
+        <script>
+        function playTone(freq, type, dur) {{
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + dur);
+        }}
+        function stopBGM() {{
+            const bgm = window.parent.document.getElementById('bgm_player');
+            if(bgm) {{ bgm.pause(); setTimeout(() => bgm.play(), 5000); }}
+        }}
+        {js_audio.get(audio_type, '')}
+        </script>
+    """, height=0)
 
 def setup_bgm():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
-            data = f.read()
-            b64 = base64.b64encode(data).decode()
-            # ページ全体をクリックしたときに再生開始するグローバルなBGMプレイヤー
+            b64 = base64.b64encode(f.read()).decode()
             st.components.v1.html(f"""
                 <audio id="bgm_player" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
                 <script>
-                    var player = document.getElementById('bgm_player');
-                    window.parent.document.addEventListener('click', function() {{
-                        if (player.paused) {{ player.play().catch(e => console.log('BGM wait click')); }}
-                    }}, {{once: false}});
+                const player = document.getElementById('bgm_player');
+                // 親ウィンドウ含めどこをクリックしても再生開始
+                const startAudio = () => {{
+                    player.play().then(() => {{
+                        console.log('BGM Started');
+                        window.removeEventListener('click', startAudio);
+                    }}).catch(e => console.log('Wait for click'));
+                }};
+                window.parent.document.addEventListener('click', startAudio);
+                window.addEventListener('click', startAudio);
                 </script>
             """, height=0)
     except:
-        st.error("Audio file not found.")
+        st.error("BGMファイルが見つかりません。")
 
 # --- 3. ステート管理 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM READY. 画面をクリックしてBGMを開始してください。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 画面を一度クリックして音響を有効化してください。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
@@ -85,48 +89,47 @@ s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 setup_bgm()
 
-# --- 4. ゲームロジック ---
+# --- 4. ロジック ---
 def player_step(cmd):
-    # 陣営設定
-    if s["faction"] == "連合国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.0, 1.0, 1.0, 2.0, 0.60
-    elif s["faction"] == "枢軸國": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.5, 0.8, 1.2, 1.0, 0.33
-    else: a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
+    # 陣営補正
+    if s["faction"] == "連合国": a, d, o, n, sp = 1.0, 1.0, 1.0, 2.0, 0.60
+    elif s["faction"] == "枢軸國": a, d, o, n, sp = 1.5, 0.8, 1.2, 1.0, 0.33
+    else: a, d, o, n, sp = 0.5, 0.8, 1.0, 1.0, 0.33
 
     if cmd == "EXP":
-        play_audio("soft"); p1["military"] += 25.0 * a_mul; p1["nuke_point"] += 20 * n_mul
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}")
+        trigger_audio("soft"); p1["military"] += 25.0 * a; p1["nuke_point"] += 20 * n
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a:.0f}")
     elif cmd == "DEF":
-        play_audio("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次回被害軽減。")
+        trigger_audio("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開。")
     elif cmd == "MAR":
-        play_audio("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
+        trigger_audio("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a + 10.0, 10.0)
         p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土ダメージ。")
     elif cmd == "OCC":
-        play_audio("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul, 50.0)
-        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯拡張。")
+        trigger_audio("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o, 50.0)
+        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯拡張。敵ダメージなし。")
     elif cmd == "SPY":
-        play_audio("sharp")
-        if random.random() < spy_prob:
+        trigger_audio("sharp")
+        if random.random() < sp:
             p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
-            s["logs"].insert(0, "🕵️スパイ成功: 核開発妨害。")
+            s["logs"].insert(0, "🕵️スパイ成功: 核妨害。")
         else: s["logs"].insert(0, "🕵️スパイ失敗。")
     elif cmd == "NUK":
-        play_audio("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
+        trigger_audio("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
-        # 敵AIターン
         p2["nuke_point"] += (25.0 + (10.0 if s["difficulty"] == "超大国" else 0))
         if p2["stun"] > 0: p2["stun"] -= 1
         else:
-            if p2["nuke_point"] >= 200: p1["territory"] *= 0.3; p2["nuke_point"] = 0; s["logs"].insert(0, "☢️敵の核攻撃。")
+            if p2["nuke_point"] >= 200: p1["territory"] *= 0.3; p2["nuke_point"] = 0
             else:
-                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_mul)
+                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d)
                 if p1["shield"]: e_dmg *= 0.5
                 if p1["colony"] > 0: p1["colony"] -= e_dmg * 0.8; p1["territory"] -= e_dmg * 0.2
                 else: p1["territory"] -= e_dmg
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
-# --- 5. UIフェーズ ---
+# --- 5. UI ---
 if s["phase"] == "DIFFICULTY":
     st.title("DEUS: 戦域選択")
     for d in ["小国", "大国", "超大国"]:
@@ -136,8 +139,8 @@ if s["phase"] == "DIFFICULTY":
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦マニュアル")
     st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション説明】</span><div class="briefing-text">'
-                '・🛠軍拡: 軍事力と核P増加。<br>・🛡防衛: 被弾50%カット。<br>・⚔️進軍: 敵領土を攻撃。<br>'
-                '・🚩占領: 盾(緩衝地帯)を拡張。敵にダメージなし。<br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時のみ無音化。</div></div>', unsafe_allow_html=True)
+                '・🛠軍拡: 軍備・核P増加。<br>・🛡防衛: ダメージ50%カット。<br>・⚔️進軍: 敵領土を攻撃。<br>'
+                '・🚩占領: 盾(緩衝地帯)を拡張。<b>敵にダメージなし</b>。<br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時のみ無音化。</div></div>', unsafe_allow_html=True)
     if st.button("進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
