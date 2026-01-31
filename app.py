@@ -105,7 +105,7 @@ def player_step(cmd):
 
 # 1. 難易度選択
 if s["phase"] == "DIFFICULTY":
-    st.title("難易度設定")
+    st.title("陣営プロトコル")
     if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("大国", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("超大国", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
