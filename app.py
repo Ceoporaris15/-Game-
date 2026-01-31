@@ -3,13 +3,16 @@ import random
 import base64
 
 # --- 1. 画面構成・モバイル最適化 ---
-st.set_page_config(page_title="DEUS: AUTOMATED WARFARE", layout="centered")
+st.set_page_config(page_title="DEUS: STEALTH OPERATION", layout="centered")
 
 st.markdown("""
     <style>
     html, body, [data-testid="stAppViewContainer"] {
         overflow: hidden; background-color: #000; color: #FFF;
     }
+    /* 再生バーを隠すためのスタイル */
+    .stAudio { display: none; } 
+    
     .enemy-banner {
         background-color: #300; border: 2px solid #F00;
         padding: 5px; text-align: center; margin: -50px -15px 10px -15px;
@@ -34,25 +37,39 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BGM自動再生エンジン ---
-def play_bgm():
+# --- 2. 隠しBGM自動再生エンジン (バー非表示) ---
+def play_bgm_stealth():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
             data = f.read()
-            # autoplay=True, loop=True を指定
-            st.audio(data, format='audio/mp3', loop=True, autoplay=True)
+            b64 = base64.b64encode(data).decode()
+            # HTML5のaudioタグを隠し状態で埋め込み、JSで自動再生を促す
+            md = f"""
+                <audio autoplay loop id="bgm-player">
+                    <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                </audio>
+                <script>
+                    var audio = document.getElementById('bgm-player');
+                    audio.volume = 0.5;
+                    // ブラウザの制限回避のため、クリック時に再生開始する予備処理
+                    document.addEventListener('click', function() {{
+                        audio.play();
+                    }}, {{ once: true }});
+                </script>
+                """
+            st.components.v1.html(md, height=0)
     except FileNotFoundError:
-        st.info("🎵 BGMを有効にするには GitHubに 'Vidnoz_AIMusic.mp3' を配置してください。")
+        st.info("🎵 BGM未検出")
 
-# 常に再生を試みる
-play_bgm()
+# ステルス再生開始
+play_bgm_stealth()
 
-# --- 3. システムステート初期化 ---
+# --- 3. システムステート ---
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "nuke_point": 0, "shield_active": False},
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0},
-        "turn": 1, "logs": ["システムオンライン。BGM同期完了。"],
+        "turn": 1, "logs": ["潜入開始。BGMステルス稼働。"],
         "player_ap": 2, "max_ap": 2, "wmd_charging": False,
         "difficulty": None, "faction": None
     }
@@ -60,7 +77,7 @@ if 'state' not in st.session_state:
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-# --- 4. 戦術演算 ---
+# --- 4. 戦術ロジック ---
 def apply_damage_to_player(dmg):
     success_rate = 0.15 if s["faction"] == "枢軸国" else 0.3
     if p1["shield_active"]:
@@ -97,7 +114,7 @@ def player_step(cmd):
 
     if cmd == "EXPAND":
         p1["military"] += 25.0 * expand_mul; p1["nuke_point"] += 20 * nuke_mul
-        s["logs"].insert(0, f"🛠 軍拡: 承認P増加")
+        s["logs"].insert(0, f"🛠 軍拡完了")
     elif cmd == "DEFEND": p1["shield_active"] = True; s["logs"].insert(0, "🛡 防衛展開")
     elif cmd == "MARCH":
         dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * march_mul
@@ -119,7 +136,7 @@ def player_step(cmd):
     if s["player_ap"] <= 0:
         ai_logic(); s["player_ap"], s["turn"], p1["shield_active"] = s["max_ap"], s["turn"] + 1, False
 
-# --- 5. インターフェース ---
+# --- 5. UI ---
 if s["difficulty"] is None:
     st.title("🚩 DEUS")
     cols = st.columns(3)
@@ -136,12 +153,12 @@ else:
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}pts</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div>{s["faction"]} | 本国: <span class="stat-val">{p1["territory"]:.0f}</span></div><div>緩衝: <span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
     
-    st.caption(f"☢️ 核開発の進行状態: {p1['nuke_point']:.0f} / 200")
+    st.caption(f"☢️ 核開発の進行状態")
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0 or p2["territory"] <= 0:
-        st.write("### 作戦完了: " + ("勝利" if p2["territory"] <= 0 else "敗北"))
-        if st.button("SYSTEM REBOOT"): st.session_state.clear(); st.rerun()
+        st.write("### 作戦完了")
+        if st.button("REBOOT"): st.session_state.clear(); st.rerun()
     else:
         st.write(f"**Turn {s['turn']} | AP: {s['player_ap']}**")
         if p1["nuke_point"] >= 200:
