@@ -43,7 +43,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 30.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 最小打撃力を保証。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 敵防衛網に脆弱性を確認。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None
     }
 
@@ -51,7 +51,6 @@ s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
 def player_step(cmd):
-    # 陣営別倍率
     mul_pwr = 0.25 if s["faction"] == "社会主義国" else 1.0
     mul_nuk = 2.0 if s["faction"] == "連合国" else 1.0
     spy_prob = 0.60 if s["faction"] == "連合国" else 0.33
@@ -61,46 +60,45 @@ def player_step(cmd):
         p1["military"] += 25.0 * mul_pwr
         if p1["nuke_lock"] <= 0:
             p1["nuke_point"] += 20 * mul_nuk
-            s["logs"].insert(0, "🛠軍拡: 軍備増強と核開発")
+            s["logs"].insert(0, "🛠軍拡: 軍備増強を優先。")
         else:
-            s["logs"].insert(0, "🛠軍拡: 核ロック中の戦力強化")
+            s["logs"].insert(0, "🛠軍拡: 核ロック中、戦力のみを強化。")
             
     elif cmd == "DEF": 
         p1["shield"] = True
-        s["logs"].insert(0, "🛡防衛: 迎撃シールドを展開")
+        s["logs"].insert(0, "🛡防衛: 本国の防護壁を活性化。")
         
     elif cmd == "MAR":
-        # 攻撃計算に最小値10を適用
         raw_dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_pwr
-        dmg_val = max(raw_dmg, 10.0) # 最小値10の保証
+        dmg_val = max(raw_dmg, 10.0) 
         
-        if p2["stun"] <= 0:
+        # --- 防衛強度を弱体化 (30%の確率に低下) ---
+        if p2["stun"] <= 0 and random.random() < 0.30:
             dmg_val *= 0.5
             p2["territory"] -= dmg_val
-            s["logs"].insert(0, f"🛡敵確定防衛: {dmg_val:.0f}ダメに軽減")
+            s["logs"].insert(0, f"🛡敵防衛(弱): 僅かに軽減され {dmg_val:.0f}ダメ。")
         else:
             p2["territory"] -= dmg_val
-            s["logs"].insert(0, f"⚔️進軍: 無防備な敵へ {dmg_val:.0f}ダメ")
+            s["logs"].insert(0, f"⚔️進軍: 防衛網を突破！ {dmg_val:.0f}ダメ！")
             
     elif cmd == "OCC":
-        cost = max(20.0 * mul_pwr, 5.0) # 占領コストの下限も調整
+        cost = max(20.0 * mul_pwr, 5.0)
         if p1["military"] >= cost:
             p1["military"] -= cost
-            steal = max(p2["territory"] * 0.2, 40.0) * mul_pwr
-            steal = max(steal, 10.0) # 占領吸収量の最小保証
+            steal = max(max(p2["territory"] * 0.2, 40.0) * mul_pwr, 10.0)
             p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, "🚩占領: 敵領土を緩衝材とする")
+            s["logs"].insert(0, "🚩占領: 敵地を切り取り緩衝地帯へ。")
             
     elif cmd == "SPY":
         if random.random() < spy_prob:
             p2["territory"] *= 0.9; p2["stun"] = 2
-            s["logs"].insert(0, "🕵️工作成功: 敵をハッキングし無力化")
+            s["logs"].insert(0, "🕵️工作成功: 敵をハッキング。防御を完全喪失。")
         else:
-            s["logs"].insert(0, "🕵️工作失敗: 工作員が排除された")
+            s["logs"].insert(0, "🕵️工作失敗: 敵の迎撃に遭った。")
             
     elif cmd == "NUK":
         p2["territory"] *= 0.15; p1["nuke_point"] = 0
-        s["logs"].insert(0, "☢️最終宣告: 世界に審判を下す")
+        s["logs"].insert(0, "☢️最終宣告: 世界に審判が下った。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -110,20 +108,20 @@ def player_step(cmd):
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中({p2['stun']}T)")
         else:
             p2["military"] += 20.0
-            enemy_dmg = max((p2["military"] * 0.4) + 10.0, 10.0) # 敵攻撃も最小10
+            enemy_dmg = max((p2["military"] * 0.4) + 10.0, 10.0)
             
             if s["difficulty"] == "大国":
                 if random.random() < 0.40: 
                     p1["nuke_point"] = max(0, p1["nuke_point"] - 35)
-                    s["logs"].insert(0, "🕵️敵スパイ: 核施設が標的になった")
+                    s["logs"].insert(0, "🕵️敵スパイ: 核施設が標的になった。")
             elif s["difficulty"] == "超大国":
                 enemy_dmg *= 1.2
-                if random.random() < 0.30: p1["nuke_lock"] = 2; s["logs"].insert(0, "☢️核ハック: 進行停止")
-                elif random.random() < 0.20: p1["nuke_point"] = 0; s["logs"].insert(0, "☣️消去: 核情報が消失")
+                if random.random() < 0.30: p1["nuke_lock"] = 2; s["logs"].insert(0, "☢️核ハック: システム凍結。")
+                elif random.random() < 0.20: p1["nuke_point"] = 0; s["logs"].insert(0, "☣️データ消去: 情報が消失。")
 
             if p1["shield"]: enemy_dmg *= shield_eff
             p1["territory"] -= enemy_dmg
-            s["logs"].insert(0, f"⚠️敵反撃: 本国へ{enemy_dmg:.0f}の打撃")
+            s["logs"].insert(0, f"⚠️敵反撃: 本国が {enemy_dmg:.0f}ダメ。")
             
         s["player_ap"] = s["max_ap"]
         s["turn"] += 1
