@@ -26,9 +26,8 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 修正版オーディオエンジン ---
+# --- 2. オーディオエンジン ---
 def play_se(type):
-    # ブラウザのセキュリティ制限を回避するため、アクションごとにJavaScriptでAudioContextを生成
     scripts = {
         "soft": "var c=new AudioContext();var o=c.createOscillator();var g=c.createGain();o.type='sine';o.frequency.value=200;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.2);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.2);",
         "sharp": "var c=new AudioContext();var o=c.createOscillator();var g=c.createGain();o.type='square';o.frequency.value=600;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
@@ -40,8 +39,14 @@ def setup_bgm():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
             b64 = base64.b64encode(f.read()).decode()
+            # 波括弧 {{ }} でエスケープして構文エラーを回避
             st.components.v1.html(f"""<audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
-                <script>var a=window.parent.document.getElementById('bgm'); window.parent.document.addEventListener('mousedown', ()=>{if(a.paused)a.play();}, {{"once":false}});</script>""", height=0)
+                <script>
+                var a=window.parent.document.getElementById('bgm'); 
+                window.parent.document.addEventListener('mousedown', function() {{
+                    if(a.paused) a.play();
+                }}, {{"once": false}});
+                </script>""", height=0)
     except: pass
 
 # --- 3. ステート管理 ---
@@ -49,7 +54,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. サウンド・プロトコル修正完了。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 構文エラー修復完了。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
@@ -78,8 +83,8 @@ def player_step(cmd):
         play_se("sharp")
         if random.random() < spy_prob:
             p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
-            s["logs"].insert(0, "🕵️工作成功: 敵核開発妨害(-50)")
-        else: s["logs"].insert(0, "🕵️工作失敗: 連絡途絶。")
+            s["logs"].insert(0, "🕵️工作成功: 敵核妨害(-50)")
+        else: s["logs"].insert(0, "🕵️工作失敗: 工作員ロスト。")
     elif cmd == "NUK":
         play_se("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。静寂。")
 
@@ -107,12 +112,12 @@ if s["phase"] == "DIFFICULTY":
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦マニュアル")
     st.markdown('<div class="briefing-card"><span class="briefing-title">【全アクション説明】</span><div class="briefing-text">'
-                '・<b>🛠軍拡</b>: 軍事力+25/核P+20。核と攻撃の強化。<br>'
-                '・<b>🛡防衛</b>: 1ターン被弾ダメージを50%軽減。<br>'
+                '・<b>🛠軍拡</b>: 軍備+25/核P+20。核と進軍の基盤。<br>'
+                '・<b>🛡防衛</b>: 1Tのみ被弾ダメージを50%軽減。<br>'
                 '・<b>⚔️進軍</b>: 敵領土を直接破壊。勝利への攻撃。<br>'
-                '・<b>🚩占領</b>: 緩衝地帯(盾)を拡張。敵にダメージなし。<br>'
-                '・<b>🕵️スパイ</b>: 敵核Pを-50。敵防御を2T無効化。<br>'
-                '・<b>☢️核兵器</b>: 敵領土を残り15%へ。使用時のみ無音化。</div></div>', unsafe_allow_html=True)
+                '・<b>🚩占領</b>: 緩衝地帯(盾)を拡張。敵に被害なし。<br>'
+                '・<b>🕵️スパイ</b>: 敵核Pを-50。敵の防御を2T封じます。<br>'
+                '・<b>☢️核兵器</b>: 敵領土を残り15%へ。使用時のみ無音。</div></div>', unsafe_allow_html=True)
     st.markdown('<div class="briefing-card"><span class="briefing-title">【国家特性】</span><div class="briefing-text">'
                 '・<b>🔵連合国</b>: 核速度2倍。スパイ成功率60%。<br>'
                 '・<b>🔴枢軸國</b>: 攻撃1.5倍、占領1.2倍。防御0.8倍。<br>'
