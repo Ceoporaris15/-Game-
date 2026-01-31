@@ -18,6 +18,11 @@ st.markdown("""
     .hp-bar-fill { background: linear-gradient(90deg, #d4af37, #f1c40f); height: 100%; transition: width 0.5s; }
     .shield-bar-fill { background: linear-gradient(90deg, #3498db, #2980b9); height: 100%; transition: width 0.5s; }
     .enemy-bar-fill { background: linear-gradient(90deg, #c0392b, #e74c3c); height: 100%; transition: width 0.5s; }
+    .nuke-bar-fill { background: linear-gradient(90deg, #9b59b6, #8e44ad); height: 100%; transition: width 0.5s; }
+    
+    .briefing-card { background: #111; border: 1px solid #333; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    .briefing-title { color: #d4af37; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #444; margin-bottom: 5px; }
+    .briefing-text { font-size: 0.75rem; color: #CCC; line-height: 1.5; }
     
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
         height: 38px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important; font-size: 0.8rem !important;
@@ -26,7 +31,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 確定音響エンジン ---
+# --- 2. 確定音響エンジン (Web Audio API) ---
 def play_se(tone_type):
     scripts = {
         "soft": "const c=new (window.AudioContext||window.webkitAudioContext)();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=350;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.3);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.3);",
@@ -73,7 +78,7 @@ def player_step(cmd):
         play_se("soft"); p1["military"] += 25.0 * a; p1["nuke_point"] += 20 * n
         s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a:.0f}")
     elif cmd == "DEF":
-        play_se("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 防御。")
+        play_se("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 防御態勢。")
     elif cmd == "MAR":
         play_se("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a + 10.0, 10.0)
         p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃。")
@@ -109,12 +114,22 @@ if s["phase"] == "DIFFICULTY":
             s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]; p2["max_territory"] = p2["territory"]; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
-    st.title("🛡️ 作戦説明")
-    st.markdown('<div class="briefing-card"><div class="briefing-text">・軍拡: 軍備・核P増 ・防衛: 被弾半減 ・進軍: 敵攻撃 ・占領: 盾拡張 ・スパイ: 敵核妨害 ・核: 敵領土激減</div></div>', unsafe_allow_html=True)
-    if st.button("進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
+    st.title("🛡️ 作戦説明書")
+    st.markdown('<div class="briefing-card"><div class="briefing-title">【アクション規定】</div><div class="briefing-text">'
+                '・🛠<b>軍拡</b>: 軍事力と核開発Pを増加させる。基本の強化行動。<br>'
+                '・🛡<b>防衛</b>: 次の敵の攻撃被害を50%軽減するシールドを展開。<br>'
+                '・⚔️<b>進軍</b>: 軍備に応じたダメージを敵領土に直接与える。<br>'
+                '・🚩<b>占領</b>: 緩衝地帯(盾)を拡張する。敵領土には損害を与えない。<br>'
+                '・🕵️<b>スパイ</b>: 成功時、敵を2ターン麻痺させ核Pを50減少させる。<br>'
+                '・☢️<b>核兵器</b>: 開発200Pで使用可能。敵領土を85%破壊し、音を消し去る。</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><div class="briefing-title">【国家特性】</div><div class="briefing-text">'
+                '・<b>連合国</b>: 核開発速度が2倍。スパイ成功率も高い(60%)。<br>'
+                '・<b>枢軸國</b>: 攻撃力1.5倍、占領効率1.2倍。ただし防御が脆い。<br>'
+                '・<b>社会主義国</b>: APが3あり、手数が多い。初期本土領土も200。</div></div>', unsafe_allow_html=True)
+    if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
-    st.title("陣営選択")
+    st.title("陣営プロトコル選択")
     c1, c2, c3 = st.columns(3)
     if c1.button("連合国", use_container_width=True): s["faction"]="連合国"; s["phase"]="GAME"; st.rerun()
     if c2.button("枢軸國", use_container_width=True): s["faction"]="枢軸國"; s["phase"]="GAME"; st.rerun()
@@ -124,30 +139,32 @@ elif s["phase"] == "GAME":
     p1_hp_pct = max(p1["territory"] / p1["max_territory"] * 100, 0)
     p2_hp_pct = max(p2["territory"] / p2["max_territory"] * 100, 0)
     colony_pct = max(min(p1["colony"] / 100 * 100, 100), 0)
+    p1_nuke_pct = min(p1['nuke_point']/2, 100)
+    p2_nuke_pct = min(p2['nuke_point']/2, 100)
 
     st.markdown(f"""
-    <div class="enemy-banner"><span class="enemy-text">作戦領域 - 第 {s['turn']} ターン</span></div>
+    <div class="enemy-banner"><span class="enemy-text">作戦領域 - 第 {s['turn']} ターン (残AP:{s['player_ap']})</span></div>
     <div class="stat-section">
         <div class="stat-card">
             <div class="bar-label"><span>自国本土</span><span>{p1['territory']:.0f}</span></div>
             <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: {p1_hp_pct}%;"></div></div>
             <div class="bar-label"><span>緩衝地帯</span><span>{p1['colony']:.0f}</span></div>
             <div class="hp-bar-bg"><div class="shield-bar-fill" style="width: {colony_pct}%;"></div></div>
+            <div class="bar-label"><span>自国核開発</span><span>{p1['nuke_point']:.0f}/200</span></div>
+            <div class="hp-bar-bg"><div class="nuke-bar-fill" style="width: {p1_nuke_pct}%;"></div></div>
         </div>
         <div class="stat-card">
             <div class="bar-label"><span>敵軍領土</span><span>{p2['territory']:.0f}</span></div>
             <div class="hp-bar-bg"><div class="enemy-bar-fill" style="width: {p2_hp_pct}%;"></div></div>
-            <div class="bar-label"><span>敵軍核兵器</span><span>{p2['nuke_point']:.0f}/200</span></div>
-            <div class="hp-bar-bg"><div class="enemy-bar-fill" style="width: {min(p2['nuke_point']/2, 100)}%; opacity: 0.5;"></div></div>
+            <div class="bar-label"><span>敵軍核開発</span><span>{p2['nuke_point']:.0f}/200</span></div>
+            <div class="hp-bar-bg"><div class="enemy-bar-fill" style="width: {p2_nuke_pct}%; opacity: 0.5;"></div></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
-
-    st.progress(min(p1['nuke_point']/200.0, 1.0))
     
     if p1["territory"] <= 0 or p2["territory"] <= 0:
         st.success("勝利" if p2["territory"] <= 0 else "敗北")
-        if st.button("再起動", use_container_width=True): st.session_state.clear(); st.rerun()
+        if st.button("システム再起動", use_container_width=True): st.session_state.clear(); st.rerun()
     else:
         if p1["nuke_point"] >= 200:
             if st.button("☢️ 最終宣告執行", type="primary", use_container_width=True): player_step("NUK"); st.rerun()
