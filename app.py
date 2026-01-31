@@ -11,13 +11,11 @@ st.markdown("""
         background-color: #000; color: #FFF; overflow: hidden;
     }
     .stAudio { display: none; } 
-    /* 敵軍情報 */
     .enemy-banner {
         background-color: #200; border-bottom: 1px solid #F00;
         padding: 4px; text-align: center; margin: -55px -15px 5px -15px;
     }
     .enemy-text { color: #F00; font-weight: bold; font-size: 1rem; letter-spacing: 3px; }
-    /* 自軍ステータス */
     .status-row {
         display: flex; justify-content: space-around;
         background: #111; border: 1px solid #d4af37;
@@ -25,18 +23,15 @@ st.markdown("""
     }
     .stat-label { font-size: 0.6rem; color: #888; margin-right: 4px; }
     .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
-    /* 核ゲージ */
     .stProgress { height: 6px !important; margin-bottom: 2px !important; }
     .stProgress > div > div > div > div { background-color: #007BFF; }
     .nuke-title { color: #007BFF; font-weight: bold; font-size: 0.7rem; margin: 0; }
-    /* アクションボタン：極小化 */
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
         height: 28px !important; font-size: 0.75rem !important;
         padding: 0px !important; margin-bottom: -15px !important;
         background-color: #1a1a1a !important; color: #d4af37 !important;
         border: 1px solid #d4af37 !important; border-radius: 2px !important;
     }
-    /* ログボックス：ボタンのすぐ下に配置 */
     .log-box {
         background: #000; border-top: 1px solid #333;
         padding: 4px 8px; height: 60px; font-size: 0.75rem; color: #CCC; 
@@ -74,17 +69,17 @@ s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
 def player_step(cmd):
-    # ロジック継承
     mul_exp = 2.0 if s["faction"] == "社会主義国" else 1.0
     mul_mar = 2.0 if s["faction"] in ["枢軸国", "社会主義国"] else 1.0
     mul_nuk = 2.0 if s["faction"] == "連合国" else 1.0
+    
     if cmd == "EXP":
         p1["military"] += 25.0 * mul_exp; p1["nuke_point"] += 20 * mul_nuk
         s["logs"].insert(0, "🛠軍拡: 戦力・核開発強化")
     elif cmd == "DEF": p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開")
     elif cmd == "MAR":
-        dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_mar
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}打撃")
+        dmg_val = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_mar
+        p2["territory"] -= dmg_val; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg_val:.0f}打撃")
     elif cmd == "OCC":
         if p1["military"] >= 20:
             p1["military"] -= 20; steal = max(p2["territory"] * 0.2, 40.0)
@@ -102,19 +97,27 @@ def player_step(cmd):
         if p2["stun"] > 0:
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳DEUS再起動中({p2['stun']}T)")
         else:
-            if s["difficulty"] == "大国":
-                dmg = 15.0 + (s["turn"] * 1.5)
+            enemy_dmg = 0.0 # 初期化してUnboundLocalErrorを防止
+            if s["difficulty"] == "小国":
+                enemy_dmg = 10.0
+            elif s["difficulty"] == "大国":
+                enemy_dmg = 15.0 + (s["turn"] * 1.5)
                 if random.random() < 0.25: p1["nuke_point"] = max(0, p1["nuke_point"] - 30); s["logs"].insert(0, "🕵️敵諜報: 核妨害")
                 if random.random() < 0.2: p1["colony"] *= 0.5; s["logs"].insert(0, "🔥反乱: 植民地離反")
             elif s["difficulty"] == "超大国":
-                dmg = 10.0 + (s["turn"] * 2.0)
+                enemy_dmg = 10.0 + (s["turn"] * 2.0)
                 ev = random.random()
                 if ev < 0.15: p1["nuke_point"] = 0; s["logs"].insert(0, "☢️核封印: 核凍結")
-                elif ev < 0.30: s["player_ap"] = 1; s["logs"].insert(0, "⛓供給遮断: 行動回数低下")
-            if p1["shield"]: dmg *= 0.5
-            p1["territory"] -= dmg
-            s["logs"].insert(0, f"⚠️敵反撃: 被害{dmg:.0f}")
-        s["player_ap"], s["turn"], p1["shield"] = s["max_ap"], s["turn"] + 1, False
+                elif ev < 0.30: s["max_ap"] = 1; s["logs"].insert(0, "⛓供給遮断: 恒久的なAP低下") # 永続デバフに変更
+            
+            if p1["shield"]: enemy_dmg *= 0.5
+            p1["territory"] -= enemy_dmg
+            s["logs"].insert(0, f"⚠️敵反撃: 被害{enemy_dmg:.0f}")
+            
+        # AP回復とシールド解除
+        s["player_ap"] = s["max_ap"]
+        s["turn"] += 1
+        p1["shield"] = False
 
 # --- UI構築 ---
 setup_audio_engine()
@@ -154,6 +157,5 @@ else:
         if c4.button("⚔️進軍", use_container_width=True): player_step("MAR"); st.rerun()
         if c5.button("🚩占領", use_container_width=True): player_step("OCC"); st.rerun()
 
-    # ログを最下部（ボタンのすぐ下）へ
     log_html = "".join([f'<div>{log}</div>' for log in s["logs"][:2]])
     st.markdown(f'<div class="log-box">{log_html}</div>', unsafe_allow_html=True)
