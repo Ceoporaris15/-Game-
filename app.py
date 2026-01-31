@@ -142,3 +142,7 @@ else:
     st.write("---")
     log_html = "".join([f'<div>{log}</div>' for log in s["logs"][:4]])
     st.markdown(f'<div class="log-box">{log_html}</div>', unsafe_allow_html=True)
+    # BGM実装（ローカル実行時のみ有効なコード例）
+audio_file = open('Vidnoz_AIMusic.mp3', 'rb')
+audio_bytes = audio_file.read()
+st.audio(audio_bytes, format='audio/mp3', loop=True, autoplay=True)
