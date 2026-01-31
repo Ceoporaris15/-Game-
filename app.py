@@ -1,57 +1,70 @@
 import streamlit as st
 import random
 
-# --- 超凝縮・モバイルダッシュボード設計 ---
-st.set_page_config(page_title="DEUS DASHBOARD", layout="centered")
+# --- モバイル・ワンビューポート・インターフェース ---
+st.set_page_config(page_title="DEUS COMMAND", layout="centered")
 
 st.markdown("""
     <style>
-    /* スクロールを抑制し、フォントを最小化 */
+    /* 全体設定：スクロールを殺し、コントラストを最大化 */
     html, body, [data-testid="stAppViewContainer"] {
         overflow: hidden;
-        background-color: #121212;
+        background-color: #000000;
+        color: #FFFFFF;
     }
-    .main { color: #f2e8c9; font-size: 0.8rem; }
-    
-    /* 敵エリア：最上部に極細で配置 */
-    .enemy-mini-box {
-        border-bottom: 2px solid #8b0000; background: #2b0000;
-        padding: 5px 10px; margin: -50px -20px 10px -20px;
+    .main { font-family: 'Helvetica', 'Arial', sans-serif; }
+
+    /* ヘッダーエリア（敵情報） */
+    .enemy-banner {
+        background-color: #300; border: 2px solid #F00;
+        padding: 5px; text-align: center; margin: -50px -15px 10px -15px;
     }
-    
-    /* ステータスグリッド */
-    .status-grid {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
-        margin-bottom: 5px;
+    .enemy-text { color: #FF0000; font-weight: bold; font-size: 1.1rem; }
+
+    /* ステータスカード：金文字でハッキリと */
+    .status-row {
+        display: flex; justify-content: space-around;
+        background: #111; border: 1px solid #d4af37;
+        padding: 5px; margin-bottom: 5px;
     }
-    .mini-card {
-        background: #222; border: 1px solid #d4af37;
-        padding: 4px; border-radius: 2px; text-align: center;
+    .stat-val { color: #d4af37; font-weight: bold; font-size: 1rem; }
+
+    /* コマンドボタン：横一列4並び */
+    div[data-testid="column"] button {
+        height: 50px !important;
+        font-size: 0.9rem !important;
+        font-weight: 900 !important;
+        background-color: #222 !important;
+        color: #FFF !important;
+        border: 2px solid #d4af37 !important;
+        padding: 0px !important;
+    }
+    div[data-testid="column"] button:active {
+        background-color: #d4af37 !important;
+        color: #000 !important;
     }
 
-    /* 指令ボタン：横並びで高さを抑える */
-    .stButton>button {
-        height: 40px !important; padding: 0px !important;
-        font-size: 0.85rem !important; font-weight: bold !important;
-        background-color: #333 !important; color: #d4af37 !important;
-        border: 1px solid #d4af37 !important; margin-bottom: 2px;
-    }
-    
-    /* 核ボタン：目立つが場所を取らない */
-    .nuke-btn > div > button {
-        background-color: #8b0000 !important; color: #fff !important;
-        border: 1px solid #ff0000 !important; height: 35px !important;
+    /* 核ボタン：列を崩さず強調 */
+    .nuke-container button {
+        background-color: #800 !important;
+        border: 2px solid #F00 !important;
+        margin-bottom: 10px;
     }
 
-    /* ログ：1〜2行に限定 */
-    .log-area {
-        font-size: 0.7rem; color: #aaa;
-        border-top: 1px solid #444; padding-top: 5px;
+    /* 戦況実況ログ：読みやすさを追求 */
+    .log-box {
+        background: #050505; border-left: 3px solid #d4af37;
+        padding: 8px; height: 120px; font-size: 0.85rem;
+        line-height: 1.4; color: #EEE; overflow: hidden;
     }
+    .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; }
+
+    /* プログレスバー */
+    .stProgress > div > div > div > div { background-color: #d4af37; }
     
-    /* Streamlitの余計な余白を消去 */
+    /* UI調整 */
     [data-testid="stHeader"] {display: none;}
-    .block-container {padding-top: 2rem !important; padding-bottom: 0px !important;}
+    .block-container {padding-top: 3rem !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,7 +74,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "shield": False, "nuke_point": 0},
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0, "shield": False},
-        "turn": 1, "logs": ["SYSTEM READY"],
+        "turn": 1, "logs": ["システム起動。対象：DEUS", "戦況を待機中..."],
         "player_ap": 2, "wmd_charging": False, "ai_awakened": False,
         "difficulty": None, "effect": None
     }
@@ -69,14 +82,15 @@ if 'state' not in st.session_state:
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
 
-# --- ロジック ---
+# --- 戦術演算 ---
 def apply_damage_to_player(dmg, is_wmd=False):
     if p1["shield"]: dmg *= 0.6
     if p1["colony"] > 0:
         shield_amt = min(p1["colony"], dmg)
         p1["colony"] -= shield_amt; dmg -= shield_amt
     if dmg > 0: p1["territory"] = max(0, p1["territory"] - dmg)
-    s["logs"].insert(0, f"⚠️受損: {dmg:.1f}")
+    icon = "☢️" if is_wmd else "💥"
+    s["logs"].insert(0, f"{icon} 被害報告: -{dmg:.1f}pts")
 
 def ai_logic():
     actions = 1 if s["difficulty"] == "容易" else 2
@@ -88,71 +102,77 @@ def ai_logic():
         else:
             if random.random() < (0.4 if s["ai_awakened"] else 0.1):
                 s["wmd_charging"] = True
-                s["logs"].insert(0, "🚨敵核充填")
-            else: apply_damage_to_player(p2["military"] * 0.2)
+                s["logs"].insert(0, "🚨 ALERT: DEUSが核充填を開始")
+            else: apply_damage_to_player(p2["military"] * 0.15)
 
 def player_step(cmd):
     s["effect"] = None
-    if cmd == "DEVELOP": p1["military"] += 25.0; p1["nuke_point"] += 20; s["logs"].insert(0, "🛠開発完了")
-    elif cmd == "DEFEND": p1["shield"] = True; s["logs"].insert(0, "🛡防壁展開")
+    if cmd == "DEVELOP": p1["military"] += 25.0; p1["nuke_point"] += 20; s["logs"].insert(0, "🛠 開発: 軍事レベル上昇")
+    elif cmd == "DEFEND": p1["shield"] = True; s["logs"].insert(0, "🛡 防衛: 防壁を展開")
     elif cmd == "MARCH":
         dmg = (p1["military"] * 0.5) + (p1["colony"] * 0.6)
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️攻撃:{dmg:.1f}")
+        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️ 進軍: 敵地-{dmg:.1f}")
     elif cmd == "OCCUPY":
         if p1["military"] >= 20:
             p1["military"] -= 20; steal = max(p2["territory"] * 0.2, 40.0)
-            p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🚩接収")
+            p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🚩 占領: 緩衝地帯を確保")
     elif cmd == "NUKE":
-        s["effect"] = "NUKE"; p2["territory"] *= 0.2; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️神罰執行")
+        s["effect"] = "NUKE"; p2["territory"] *= 0.2; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️ 最終宣告: 核発射")
     
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
         ai_logic(); s["player_ap"], s["turn"], p1["shield"] = 2, s["turn"] + 1, False
 
-# --- 表示 ---
+# --- UI構築 ---
 if s["difficulty"] is None:
-    st.write("### 🚩 DEUS LOGIN")
-    if st.button("小国"): s["difficulty"] = "容易"; p2["territory"] = 150.0; st.rerun()
-    if st.button("大国"): s["difficulty"] = "標準"; st.rerun()
-    if st.button("超大国"): s["difficulty"] = "困難"; s["ai_awakened"] = True; st.rerun()
+    st.title("🚩 DEUS COMMAND")
+    if st.button("小国（容易）"): s["difficulty"] = "容易"; p2["territory"] = 150.0; st.rerun()
+    if st.button("大国（標準）"): s["difficulty"] = "標準"; st.rerun()
+    if st.button("超大国（困難）"): s["difficulty"] = "困難"; s["ai_awakened"] = True; st.rerun()
 else:
-    # 1. 敵ステータス（最小化）
-    st.markdown(f'<div class="enemy-mini-box"><b>RED: DEUS {s["difficulty"]} | HP:{p2["territory"]:.0f}</b> {"[🚨WMD]" if s["wmd_charging"] else ""}</div>', unsafe_allow_html=True)
+    # 1. 敵ステータス（最上部固定）
+    st.markdown(f'<div class="enemy-banner"><span class="enemy-text">ENEMY: DEUS {s["difficulty"]} | {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
+    if s["wmd_charging"]: st.error("🚨 Strategic Weapon Charging...")
 
-    # 2. 自軍ステータスグリッド
+    # 2. プレイヤーリソース
     st.markdown(f"""
-    <div class="status-grid">
-        <div class="mini-card">本国:{p1["territory"]:.0f}</div>
-        <div class="mini-card">緩衝:{p1["colony"]:.0f}</div>
+    <div class="status-row">
+        <div>本国: <span class="stat-val">{p1["territory"]:.0f}</span></div>
+        <div>占領地: <span class="stat-val">{p1["colony"]:.0f}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 3. ゲージ類
-    st.caption(f"軍:{p1['military']:.0f}/核:{p1['nuke_point']:.0f}")
+    # 3. 軍事・核ゲージ
+    col_g1, col_g2 = st.columns(2)
+    col_g1.caption(f"軍事: {p1['military']:.0f}/100")
+    col_g2.caption(f"核承認: {p1['nuke_point']:.0f}/200")
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
-    # 4. 指令ボタン（2×2配置）
+    # 4. 指令コンソール（AP表示と横一列ボタン）
     if p1["territory"] <= 0 or p2["territory"] <= 0:
-        st.write("WIN" if p2["territory"] <= 0 else "LOSS")
-        if st.button("REBOOT"): st.session_state.clear(); st.rerun()
+        st.write("### 作戦完了: " + ("勝利" if p2["territory"] <= 0 else "敗北"))
+        if st.button("システム再起動"): st.session_state.clear(); st.rerun()
     else:
-        st.write(f"T-{s['turn']} | AP:{s['player_ap']}")
+        st.write(f"**TURN: {s['turn']} | ACTION: {s['player_ap']}**")
         
-        # 核兵器ボタン
+        # 核発射ボタン（条件達成時のみ一列の上に出現）
         if p1["nuke_point"] >= 200:
-            st.markdown('<div class="nuke-btn">', unsafe_allow_html=True)
-            if st.button("☢️ 最終宣告"): player_step("NUKE"); st.rerun()
+            st.markdown('<div class="nuke-container">', unsafe_allow_html=True)
+            if st.button("☢️ 最終審判を執行する", type="primary", use_container_width=True): player_step("NUKE"); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        c1, c2 = st.columns(2)
-        if c1.button("🛠 開発"): player_step("DEVELOP"); st.rerun()
-        if c2.button("🛡 防備"): player_step("DEFEND"); st.rerun()
-        if c1.button("⚔️ 進軍"): player_step("MARCH"); st.rerun()
-        if c2.button("🚩 占領"): player_step("OCCUPY"); st.rerun()
+        # 横一列のコマンドボタン
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button("🛠開発"): player_step("DEVELOP"); st.rerun()
+        if c2.button("🛡防備"): player_step("DEFEND"); st.rerun()
+        if c3.button("⚔️進軍"): player_step("MARCH"); st.rerun()
+        if c4.button("🚩占領"): player_step("OCCUPY"); st.rerun()
 
-    # 5. 核演出（出現しても場所を最小限に）
+    # 5. 核演出（画面を塞がないサイズ）
     if s["effect"] == "NUKE":
-        st.image(IMG_NUKE, width=150)
+        st.image(IMG_NUKE, caption="TARGET ELIMINATED", width=200)
 
-    # 6. 通信ログ（最下部1行）
-    st.markdown(f'<div class="log-area">LOG: {s["logs"][0] if s["logs"] else ""}</div>', unsafe_allow_html=True)
+    # 6. 戦況実況ログ（複数行表示）
+    st.write("---")
+    log_html = "".join([f'<div class="log-entry">{log}</div>' for log in s["logs"][:4]])
+    st.markdown(f'<div class="log-box">{log_html}</div>', unsafe_allow_html=True)
