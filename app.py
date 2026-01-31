@@ -17,71 +17,44 @@ st.markdown("""
     .briefing-title { color: #d4af37; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #444; margin-bottom: 5px; padding-bottom: 3px;}
     .briefing-text { font-size: 0.7rem; color: #CCC; line-height: 1.4; }
     div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
-        height: 35px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important;
+        height: 40px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important;
     }
     .log-box { background: #000; border-top: 1px solid #333; padding: 4px 8px; height: 60px; font-size: 0.75rem; color: #CCC; margin-top: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 究極音響エンジン (強制アクティベーション) ---
-def trigger_audio(audio_type):
-    # ユーザーのクリック直後にAudioContextをレジュームさせるJS
-    js_audio = {
-        "soft": "playTone(220, 'sine', 0.1);",
-        "sharp": "playTone(880, 'square', 0.1);",
-        "mute": "stopBGM();"
+# --- 2. 物理音響インジェクター ---
+def inject_sound(sound_type):
+    """
+    ボタンクリック時に直接JavaScriptを走らせて音を出す。
+    Streamlitの再レンダリングを利用して実行。
+    """
+    js_tones = {
+        "soft": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='sine';o.frequency.value=220;g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.2);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.2);",
+        "sharp": "const c=new AudioContext();const o=c.createOscillator();const g=c.createGain();o.type='square';o.frequency.value=660;g.gain.setValueAtTime(0.05,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.1);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+0.1);",
+        "mute": "const b=window.parent.document.getElementById('bgm'); if(b){b.pause(); setTimeout(()=>b.play(), 5000);}"
     }
-    st.components.v1.html(f"""
-        <script>
-        function playTone(freq, type, dur) {{
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, ctx.currentTime);
-            gain.gain.setValueAtTime(0.1, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + dur);
-        }}
-        function stopBGM() {{
-            const bgm = window.parent.document.getElementById('bgm_player');
-            if(bgm) {{ bgm.pause(); setTimeout(() => bgm.play(), 5000); }}
-        }}
-        {js_audio.get(audio_type, '')}
-        </script>
-    """, height=0)
+    st.components.v1.html(f"<script>{js_tones[sound_type]}</script>", height=0)
 
 def setup_bgm():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
             b64 = base64.b64encode(f.read()).decode()
             st.components.v1.html(f"""
-                <audio id="bgm_player" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
+                <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
                 <script>
-                const player = document.getElementById('bgm_player');
-                // 親ウィンドウ含めどこをクリックしても再生開始
-                const startAudio = () => {{
-                    player.play().then(() => {{
-                        console.log('BGM Started');
-                        window.removeEventListener('click', startAudio);
-                    }}).catch(e => console.log('Wait for click'));
-                }};
-                window.parent.document.addEventListener('click', startAudio);
-                window.addEventListener('click', startAudio);
+                const a = document.getElementById('bgm');
+                window.parent.document.addEventListener('click', () => {{ if(a.paused) a.play(); }}, {{once:false}});
                 </script>
             """, height=0)
-    except:
-        st.error("BGMファイルが見つかりません。")
+    except: pass
 
 # --- 3. ステート管理 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 画面を一度クリックして音響を有効化してください。"],
+        "turn": 1, "logs": ["SYSTEM ONLINE. クリックで音響同期開始。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
@@ -91,30 +64,29 @@ setup_bgm()
 
 # --- 4. ロジック ---
 def player_step(cmd):
-    # 陣営補正
-    if s["faction"] == "連合国": a, d, o, n, sp = 1.0, 1.0, 1.0, 2.0, 0.60
-    elif s["faction"] == "枢軸國": a, d, o, n, sp = 1.5, 0.8, 1.2, 1.0, 0.33
-    else: a, d, o, n, sp = 0.5, 0.8, 1.0, 1.0, 0.33
+    # パラメータ設定
+    if s["faction"] == "連合国": a_m, d_m, o_m, n_m, sp_p = 1.0, 1.0, 1.0, 2.0, 0.60
+    elif s["faction"] == "枢軸國": a_m, d_m, o_m, n_m, sp_p = 1.5, 0.8, 1.2, 1.0, 0.33
+    else: a_m, d_m, o_m, n_m, sp_p = 0.5, 0.8, 1.0, 1.0, 0.33
 
     if cmd == "EXP":
-        trigger_audio("soft"); p1["military"] += 25.0 * a; p1["nuke_point"] += 20 * n
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a:.0f}")
+        inject_sound("soft"); p1["military"] += 25.0 * a_m; p1["nuke_point"] += 20 * n_m
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_m:.0f}")
     elif cmd == "DEF":
-        trigger_audio("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開。")
+        inject_sound("soft"); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開。")
     elif cmd == "MAR":
-        trigger_audio("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a + 10.0, 10.0)
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土ダメージ。")
+        inject_sound("sharp"); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_m + 10.0, 10.0)
+        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃。")
     elif cmd == "OCC":
-        trigger_audio("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o, 50.0)
-        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯拡張。敵ダメージなし。")
+        inject_sound("soft"); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_m, 50.0)
+        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯+{steal:.0f}(敵損害なし)。")
     elif cmd == "SPY":
-        trigger_audio("sharp")
-        if random.random() < sp:
-            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
-            s["logs"].insert(0, "🕵️スパイ成功: 核妨害。")
+        inject_sound("sharp")
+        if random.random() < sp_p:
+            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功: 核妨害。")
         else: s["logs"].insert(0, "🕵️スパイ失敗。")
     elif cmd == "NUK":
-        trigger_audio("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
+        inject_sound("mute"); p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告。静寂が訪れる。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -123,7 +95,7 @@ def player_step(cmd):
         else:
             if p2["nuke_point"] >= 200: p1["territory"] *= 0.3; p2["nuke_point"] = 0
             else:
-                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d)
+                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_m)
                 if p1["shield"]: e_dmg *= 0.5
                 if p1["colony"] > 0: p1["colony"] -= e_dmg * 0.8; p1["territory"] -= e_dmg * 0.2
                 else: p1["territory"] -= e_dmg
@@ -137,11 +109,13 @@ if s["phase"] == "DIFFICULTY":
             s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]; s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
-    st.title("🛡️ DEUS 作戦マニュアル")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション説明】</span><div class="briefing-text">'
-                '・🛠軍拡: 軍備・核P増加。<br>・🛡防衛: ダメージ50%カット。<br>・⚔️進軍: 敵領土を攻撃。<br>'
-                '・🚩占領: 盾(緩衝地帯)を拡張。<b>敵にダメージなし</b>。<br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時のみ無音化。</div></div>', unsafe_allow_html=True)
-    if st.button("進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
+    st.title("🛡️ DEUS 作戦要綱")
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><div class="briefing-text">'
+                '・🛠軍拡: 軍備・核P増加。<br>・🛡防衛: 被弾50%カット。<br>・⚔️進軍: 敵領土への直接攻撃。<br>'
+                '・🚩占領: 盾(緩衝地帯)を拡張。<b>敵への損害は0。</b><br>・🕵️スパイ: 敵核妨害。<br>・☢️核: 敵領土激減。使用時、全ての音が消える。</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【国家特性】</span><div class="briefing-text">'
+                '・🔵連合国: 核速度2倍。スパイ成功率60%。<br>・🔴枢軸國: 攻撃1.5倍、占領1.2倍。防御弱。<br>・🛠社会主義国: 行動回数AP3。耐久200。攻撃弱。</div></div>', unsafe_allow_html=True)
+    if st.button("陣営選択へ", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
     st.title("陣営プロトコル")
@@ -155,7 +129,6 @@ elif s["phase"] == "GAME":
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">敵領土: {p2["territory"]:.0f} | 敵核: {p2["nuke_point"]:.0f}/200</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div><span class="stat-label">本土</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
-    
     if p1["territory"] <= 0 or p2["territory"] <= 0:
         st.success("VICTORY" if p2["territory"] <= 0 else "DEFEAT")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
