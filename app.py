@@ -109,7 +109,7 @@ def player_step(cmd):
 
 # --- 5. UI ---
 if s["phase"] == "DIFFICULTY":
-    st.title("DEUS: 戦域選択")
+    st.title("国家間Game玉")
     if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("大国 (Normal)", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
     if st.button("超大国 (Hard)", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
