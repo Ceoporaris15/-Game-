@@ -46,82 +46,79 @@ def setup_audio_engine():
 # --- 3. ステート管理 ---
 if 'state' not in st.session_state:
     st.session_state.state = {
-        "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
-        "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 各国比率パラメータ適用済。"],
+        "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
+        "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
+        "turn": 1, "logs": ["SYSTEM ONLINE. スパイによる核抑制機能、実装。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
 
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
-
 setup_audio_engine()
 
 # --- 4. コマンド・ロジック ---
 def player_step(cmd):
-    # 比率の設定
-    if s["faction"] == "連合国":
-        a_mul, d_mul, o_mul, n_mul, spy_prob = 1.0, 1.0, 1.0, 2.0, 0.60
-    elif s["faction"] == "枢軸国":
-        a_mul, d_mul, o_mul, n_mul, spy_prob = 1.5, 0.8, 1.2, 1.0, 0.33
-    else: # 社会主義国
-        a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
+    if s["faction"] == "連合国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.0, 1.0, 1.0, 2.0, 0.60
+    elif s["faction"] == "枢軸国": a_mul, d_mul, o_mul, n_mul, spy_prob = 1.5, 0.8, 1.2, 1.0, 0.33
+    else: a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
 
     if cmd == "EXP":
         p1["military"] += 25.0 * a_mul
-        if p1["nuke_lock"] <= 0: p1["nuke_point"] += 20 * n_mul
-        s["logs"].insert(0, f"🛠軍拡: 軍備を強化(+{25.0*a_mul:.0f})。")
+        p1["nuke_point"] += 20 * n_mul
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}。核開発も進行。")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃率を強化。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃シールド展開。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
         if p2["stun"] <= 0 and random.random() < 0.30:
-            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に軽減。")
+            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に抑えられた。")
         else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵地に{dmg:.0f}の打撃。")
+            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土に{dmg:.0f}の打撃。")
     elif cmd == "OCC":
-        cost = max(15.0 * a_mul, 5.0)
-        if p1["military"] >= cost:
-            p1["military"] -= cost
-            # 占領倍率(o_mul)適用、上限50
-            calc_steal = ((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul
-            steal = min(calc_steal, 50.0)
-            p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張。")
+        calc_steal = ((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul
+        steal = min(calc_steal, 50.0)
+        p2["territory"] -= steal; p1["colony"] += steal
+        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}獲得。")
     elif cmd == "SPY":
         if random.random() < spy_prob:
-            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵防御を無力化。")
-        else: s["logs"].insert(0, "🕵️工作失敗: 通信遮断。")
+            p2["stun"] = 2
+            p2["nuke_point"] = max(0, p2["nuke_point"] - 50) # 核抑制効果
+            s["logs"].insert(0, "🕵️工作成功: 敵防御停止 & 核実験を阻止(-50)。")
+        else: s["logs"].insert(0, "🕵️工作失敗: スパイが拘束された。")
     elif cmd == "NUK":
         p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
-        if p1["nuke_lock"] > 0: p1["nuke_lock"] -= 1
+        # --- AIのターン ---
+        p2["nuke_point"] += 15 # AIも核開発を行う
+        
         if p2["stun"] > 0:
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中({p2['stun']}T)")
         else:
-            p2["military"] += 20.0
-            total_e_dmg = max((p2["military"] * 0.4) + 20.0, 20.0)
-            if s["difficulty"] == "超大国": total_e_dmg *= 1.2
-            
-            # 防御力比率(d_mul)の適用。比率が低いほど被ダメージが増える(1/d_mul)。
-            effective_e_dmg = total_e_dmg * (1.0 / d_mul)
-            if p1["shield"]: effective_e_dmg *= 0.5
-            
-            if p1["colony"] > 0:
-                colony_dmg, homeland_dmg = effective_e_dmg * 0.8, effective_e_dmg * 0.2
-                p1["colony"] -= colony_dmg; p1["territory"] -= homeland_dmg
-                if p1["colony"] < 0: p1["territory"] += p1["colony"]; p1["colony"] = 0
-                s["logs"].insert(0, f"⚠️被弾: 本土-{homeland_dmg:.0f} / 緩衝-{colony_dmg:.0f}")
+            # AIの意思決定：核使用の判断
+            if p2["nuke_point"] >= 200 and p1["territory"] > 30:
+                # 本土がまだ健在なら使用するが、リスク判断（ここではシンプルに発動）
+                p1["territory"] *= 0.3; p2["nuke_point"] = 0
+                s["logs"].insert(0, "☢️敵最終宣告: 世界が震えた。")
             else:
-                p1["territory"] -= effective_e_dmg
-                s["logs"].insert(0, f"🚨警告: 本土へ{effective_e_dmg:.0f}の直撃！")
+                p2["military"] += 20.0
+                total_e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_mul)
+                if p1["shield"]: total_e_dmg *= 0.5
+                
+                if p1["colony"] > 0:
+                    col_dmg, home_dmg = total_e_dmg * 0.8, total_e_dmg * 0.2
+                    p1["colony"] -= col_dmg; p1["territory"] -= home_dmg
+                    if p1["colony"] < 0: p1["territory"] += p1["colony"]; p1["colony"] = 0
+                    s["logs"].insert(0, f"⚠️被弾: 本土-{home_dmg:.0f} / 緩衝-{col_dmg:.0f}")
+                else:
+                    p1["territory"] -= total_e_dmg
+                    s["logs"].insert(0, f"🚨警告: 本土へ{total_e_dmg:.0f}の直撃！")
         
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
-# --- 5. UIフェーズ ---
+# --- UIフェーズ ---
 if s["phase"] == "DIFFICULTY":
     st.title("DEUS: 戦域選択")
     if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
@@ -131,13 +128,8 @@ if s["phase"] == "DIFFICULTY":
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦要綱")
     st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション規定】</span><br>'
-                '<div class="briefing-text">・<b>🚩占領</b>: 一度の獲得は<b>最大50</b>ですが、緩衝地帯の蓄積に上限はありません。<br>'
-                '・<b>🕵️スパイ</b>: 敵防御（ダメージ半減）を封じるスタン。直接ダメージは無し。<br>'
-                '・<b>⚠️ダメージ分散</b>: 緩衝地帯が吸収するのは80%のみ。<b>常に20%が本土へ貫通</b>します。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【陣営ドクトリン】</span><br>'
-                '<div class="briefing-text">・<b>🔵連合国</b>: 全性能が標準的。核開発速度2倍。スパイ60%。<br>'
-                '・<b>🔴枢軸国</b>: 攻撃1.5倍、占領1.2倍の破壊力。ただし防御は0.8倍と脆い。<br>'
-                '・<b>🛠社会主義国</b>: AP3。攻撃0.5倍、防御0.8倍だが本土耐久200で圧倒的継戦力。</div></div>', unsafe_allow_html=True)
+                '<div class="briefing-text">・<b>🕵️スパイ</b>: 敵防御を2ターン封じるだけでなく、<b>敵の核開発ポイントを減少</b>させます。<br>'
+                '・<b>🚩占領</b>: 1回の獲得上限は50。盾として機能しますが、20%のダメージは常に貫通します。</div></div>', unsafe_allow_html=True)
     if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
@@ -149,7 +141,7 @@ elif s["phase"] == "FACTION":
         s["faction"] = "社会主義国"; p1["territory"] = 200.0; s["player_ap"] = 3; s["max_ap"] = 3; s["phase"] = "GAME"; st.rerun()
 
 elif s["phase"] == "GAME":
-    st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="enemy-banner"><span class="enemy-text">敵 DEUS: {p2["territory"]:.0f} | 核: {p2["nuke_point"]:.0f}/200</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div><span class="stat-label">本土</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
