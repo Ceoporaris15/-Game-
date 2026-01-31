@@ -1,8 +1,8 @@
 import streamlit as st
 import random
 
-# --- 最終戦術ダッシュボード：陣営選択版 ---
-st.set_page_config(page_title="DEUS: IDEOLOGY", layout="centered")
+# --- 最終戦術ダッシュボード：核開発ステータス明示版 ---
+st.set_page_config(page_title="DEUS: NUCLEAR CONTROL", layout="centered")
 
 st.markdown("""
     <style>
@@ -25,6 +25,8 @@ st.markdown("""
         font-weight: 900 !important; background-color: #222 !important;
         color: #FFF !important; border: 1px solid #d4af37 !important;
     }
+    /* 青いゲージ（核開発）のカスタマイズ */
+    .stProgress > div > div > div > div { background-color: #007BFF; }
     .log-box {
         background: #050505; border-left: 3px solid #d4af37;
         padding: 5px; height: 100px; font-size: 0.75rem; color: #EEE; overflow: hidden;
@@ -36,7 +38,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 100.0, "military": 0.0, "colony": 20.0, "nuke_point": 0, "shield_active": False},
         "p2": {"territory": 300.0, "military": 100.0, "colony": 50.0},
-        "turn": 1, "logs": ["陣営を選択してください。"],
+        "turn": 1, "logs": ["陣営を選択し、DEUSを殲滅せよ。"],
         "player_ap": 2, "max_ap": 2, "wmd_charging": False,
         "difficulty": None, "faction": None
     }
@@ -46,27 +48,22 @@ p1, p2 = s["p1"], s["p2"]
 
 # --- 戦術演算 ---
 def apply_damage_to_player(dmg):
-    # 防御システム：陣営による下方修正
     success_rate = 0.3
-    if s["faction"] == "枢軸国": success_rate = 0.15 # 枢軸は防御がさらに困難
-    
+    if s["faction"] == "枢軸国": success_rate = 0.15
     if p1["shield_active"]:
         if random.random() < success_rate:
             dmg = max(0, dmg - 40); s["logs"].insert(0, "🛡️ 防衛成功")
         else: s["logs"].insert(0, "❌ 防衛失敗")
-    
     if p1["colony"] > 0:
-        shield_amt = min(p1["colony"], dmg)
-        p1["colony"] -= shield_amt; dmg -= shield_amt
+        shield_amt = min(p1["colony"], dmg); p1["colony"] -= shield_amt; dmg -= shield_amt
     if dmg > 0: p1["territory"] = max(0, p1["territory"] - dmg)
-    s["logs"].insert(0, f"💥 本国被害: -{dmg:.1f}")
+    s["logs"].insert(0, f"💥 被害: -{dmg:.1f}pts")
 
 def ai_logic():
     actions = 1 if s["difficulty"] == "小国" else (2 if s["difficulty"] == "大国" else 6)
     for _ in range(actions):
         if p2["territory"] <= 0: break
-        choice = random.random()
-        if choice < 0.25 and p1["nuke_point"] > 30:
+        if random.random() < 0.25 and p1["nuke_point"] > 30:
             p1["nuke_point"] = max(0, p1["nuke_point"] - 50); s["logs"].insert(0, "🕵️ DEUS工作: 核回路妨害")
             continue
         if s["wmd_charging"]:
@@ -80,20 +77,15 @@ def ai_logic():
                 apply_damage_to_player(p2["military"] * 0.2 * p2_power)
 
 def player_step(cmd):
-    # 陣営補正係数
     expand_mul = 2.0 if s["faction"] == "社会主義国" else 1.0
     march_mul = 2.0 if s["faction"] in ["枢軸国", "社会主義国"] else 1.0
     nuke_mul = 2.0 if s["faction"] == "連合国" else 1.0
-    spy_success_base = 0.25
-    if s["faction"] == "社会主義国": spy_success_base = 0.5
-    if s["faction"] == "連合国": spy_success_base = 0.1 # 連合は裏切り（失敗）が多い
+    spy_success_base = 0.5 if s["faction"] == "社会主義国" else (0.1 if s["faction"] == "連合国" else 0.25)
 
     if cmd == "EXPAND":
-        p1["military"] += 25.0 * expand_mul
-        p1["nuke_point"] += 20 * nuke_mul
-        s["logs"].insert(0, f"🛠 軍拡: 軍事+{25*expand_mul}")
-    elif cmd == "DEFEND":
-        p1["shield_active"] = True; s["logs"].insert(0, "🛡 防衛態勢")
+        p1["military"] += 25.0 * expand_mul; p1["nuke_point"] += 20 * nuke_mul
+        s["logs"].insert(0, f"🛠 軍拡: 承認ポイント+{20*nuke_mul}")
+    elif cmd == "DEFEND": p1["shield_active"] = True; s["logs"].insert(0, "🛡 防衛準備")
     elif cmd == "MARCH":
         dmg = ((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * march_mul
         if s["difficulty"] == "超大国": dmg *= 0.1
@@ -104,11 +96,11 @@ def player_step(cmd):
             p2["territory"] -= steal; p1["colony"] += steal; s["logs"].insert(0, "🚩 占領成功")
     elif cmd == "SPY":
         if random.random() < spy_success_base:
-            if s["wmd_charging"]: s["wmd_charging"] = False; s["logs"].insert(0, "🕵️ 潜入: 【成功】核停止")
-            else: p1["nuke_point"] += 40; p2["territory"] -= 20; s["logs"].insert(0, "🕵️ 潜入: 【成功】奪取")
-        else: s["logs"].insert(0, "🕵️ 潜入: 【失敗】裏切り/捕縛")
+            if s["wmd_charging"]: s["wmd_charging"] = False; s["logs"].insert(0, "🕵️ 潜入: 核停止成功")
+            else: p1["nuke_point"] += 40; p2["territory"] -= 20; s["logs"].insert(0, "🕵️ 潜入: 成功")
+        else: s["logs"].insert(0, "🕵️ 潜入: 裏切り/失敗")
     elif cmd == "NUKE":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️ 最終宣告執行")
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️ 核執行")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -116,22 +108,22 @@ def player_step(cmd):
 
 # --- UI構築 ---
 if s["difficulty"] is None:
-    st.title("🚩 DEUS: CHOOSE DIFFICULTY")
+    st.title("🚩 DEUS: DIFFICULTY")
     cols = st.columns(3)
     if cols[0].button("小国"): s["difficulty"] = "小国"; p2["territory"] = 150.0; st.rerun()
     if cols[1].button("大国"): s["difficulty"] = "大国"; st.rerun()
     if cols[2].button("超大国"): s["difficulty"] = "超大国"; p2["territory"] = 2500.0; st.rerun()
 elif s["faction"] is None:
-    st.title("🛡️ CHOOSE FACTION")
-    if st.button("連合国 (核開発2倍 / スパイ低確率)"):
-        s["faction"] = "連合国"; st.rerun()
-    if st.button("枢軸国 (進軍2倍 / 防御下方修正)"):
-        s["faction"] = "枢軸国"; st.rerun()
-    if st.button("社会主義国 (全能力2倍 / ターン行動1回)"):
-        s["faction"] = "社会主義国"; s["player_ap"] = 1; s["max_ap"] = 1; st.rerun()
+    st.title("🛡️ FACTION")
+    if st.button("連合国 (核開発2倍 / スパイ裏切り大)"): s["faction"] = "連合国"; st.rerun()
+    if st.button("枢軸国 (進軍2倍 / 防御低確率)"): s["faction"] = "枢軸国"; st.rerun()
+    if st.button("社会主義国 (全能力2倍 / 1ターン1行動)"): s["faction"] = "社会主義国"; s["player_ap"] = 1; s["max_ap"] = 1; st.rerun()
 else:
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}pts</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div>{s["faction"]} | 本国: <span class="stat-val">{p1["territory"]:.0f}</span></div><div>緩衝: <span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
+    
+    # 【追加項目】核開発の進行状態を明示
+    st.caption(f"☢️ 核開発の進行状態: {p1['nuke_point']:.0f} / 200")
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0 or p2["territory"] <= 0:
