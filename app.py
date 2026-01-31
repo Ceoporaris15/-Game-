@@ -14,7 +14,6 @@ st.markdown("""
     .stat-label { font-size: 0.6rem; color: #888; margin-right: 4px; }
     .stat-val { color: #d4af37; font-weight: bold; font-size: 0.9rem; }
     .stProgress { height: 6px !important; margin-bottom: 2px !important; }
-    .nuke-title { color: #007BFF; font-weight: bold; font-size: 0.7rem; margin: 0; }
     .briefing-card { background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; margin-bottom: 10px; }
     .briefing-title { color: #d4af37; font-weight: bold; font-size: 1.1rem; }
     .briefing-text { font-size: 0.85rem; color: #CCC; }
@@ -33,16 +32,14 @@ def setup_audio_engine():
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
             data = f.read()
             b64 = base64.b64encode(data).decode()
-            audio_html = f"""
-            <audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
+            audio_html = f"""<audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
             <script>
                 var audio = window.parent.document.getElementById('bgm');
                 if (!audio) {{ audio = document.getElementById('bgm'); }}
                 window.parent.document.addEventListener('click', function() {{
                     if (audio.paused) {{ audio.play(); }}
                 }}, {{once: false}});
-            </script>
-            """
+            </script>"""
             st.components.v1.html(audio_html, height=0)
     except: pass
 
@@ -51,7 +48,7 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False, "nuke_lock": 0},
         "p2": {"territory": 800.0, "military": 0.0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE."],
+        "turn": 1, "logs": ["SYSTEM ONLINE. 警告：本土への貫通ダメージを確認。"],
         "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
         "phase": "DIFFICULTY"
     }
@@ -70,32 +67,30 @@ def player_step(cmd):
     if cmd == "EXP":
         p1["military"] += 25.0 * mul_pwr
         if p1["nuke_lock"] <= 0: p1["nuke_point"] += 20 * mul_nuk
-        s["logs"].insert(0, "🛠軍拡: 軍備と開発を推進。")
+        s["logs"].insert(0, "🛠軍拡: 戦力増強を優先。")
     elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃率を上昇。")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 全ラインの警戒を強化。")
     elif cmd == "MAR":
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * mul_pwr + 10.0, 10.0)
-        # スタン中は防衛が発生しない
         if p2["stun"] <= 0 and random.random() < 0.30:
-            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に軽減。")
+            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 被害を{dmg:.0f}に抑えられた。")
         else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: {dmg:.0f}の打撃。")
+            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: {dmg:.0f}の戦果。")
     elif cmd == "OCC":
+        # --- 占領の下方修正 (従来の半分へ) ---
         cost = max(15.0 * mul_pwr, 5.0)
         if p1["military"] >= cost:
             p1["military"] -= cost
-            steal = (max(p2["territory"] * 0.3, 50.0) * mul_pwr) + 20.0
+            # 吸収率 30% -> 15% / 固定値 20 -> 10 に半減
+            steal = (max(p2["territory"] * 0.15, 25.0) * mul_pwr) + 10.0
             p2["territory"] -= steal; p1["colony"] += steal
-            s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張。")
+            s["logs"].insert(0, f"🚩占領: 限定的な領土獲得 (+{steal:.0f})。")
     elif cmd == "SPY":
-        # --- 下方修正: ダメージ削除、スタン(防御崩し)のみ ---
         if random.random() < spy_prob:
-            p2["stun"] = 2
-            s["logs"].insert(0, "🕵️工作成功: 敵の防御システムを完全無効化。")
-        else:
-            s["logs"].insert(0, "🕵️工作失敗: 敵のスパイ狩りに遭った。")
+            p2["stun"] = 2; s["logs"].insert(0, "🕵️工作成功: 敵防御を一時停止。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 敵に察知された。")
     elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終審判。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -104,17 +99,24 @@ def player_step(cmd):
             p2["stun"] -= 1; s["logs"].insert(0, f"⏳敵再起動中({p2['stun']}T)")
         else:
             p2["military"] += 20.0
-            e_dmg = max((p2["military"] * 0.4) + 20.0, 20.0)
-            if s["difficulty"] == "超大国": e_dmg *= 1.2
-            if p1["shield"]: e_dmg *= shield_eff
+            total_e_dmg = max((p2["military"] * 0.4) + 20.0, 20.0)
+            if s["difficulty"] == "超大国": total_e_dmg *= 1.2
+            if p1["shield"]: total_e_dmg *= shield_eff
             
+            # --- ダメージ分散ロジック (植民地 80% / 本土 20%) ---
             if p1["colony"] > 0:
-                p1["colony"] -= e_dmg
-                if p1["colony"] < 0: p1["colony"] = 0
-                s["logs"].insert(0, f"⚠️敵反撃: 緩衝地帯に{e_dmg:.0f}ダメ。")
+                colony_dmg = total_e_dmg * 0.8
+                homeland_dmg = total_e_dmg * 0.2
+                p1["colony"] -= colony_dmg
+                p1["territory"] -= homeland_dmg
+                if p1["colony"] < 0:
+                    # 植民地不足分は本土へ貫通
+                    p1["territory"] += p1["colony"]
+                    p1["colony"] = 0
+                s["logs"].insert(0, f"🚨警告: 被弾！(本土:{homeland_dmg:.0f} / 緩衝:{colony_dmg:.0f})")
             else:
-                p1["territory"] -= e_dmg
-                s["logs"].insert(0, f"🚨警告: 本土へ{e_dmg:.0f}の直撃。")
+                p1["territory"] -= total_e_dmg
+                s["logs"].insert(0, f"🚨直撃: 本土へ{total_e_dmg:.0f}の壊滅的打撃！")
         
         s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
 
@@ -127,9 +129,9 @@ if s["phase"] == "DIFFICULTY":
 
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ 作戦ブリーフィング")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション修正】</span><br>'
-                '<span class="briefing-text">・🕵️スパイ: <b>敵領土への直接ダメージを削除。</b><br>'
-                '代わりに2ターンの間、敵の防御を完全停止させ、攻撃を通しやすくする。</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【防衛ドクトリンの変更】</span><br>'
+                '<span class="briefing-text">・緩衝地帯があっても<b>ダメージの20%は本土へ貫通</b>します。<br>'
+                '・占領による領土拡大効率が<b>50%低下</b>しました。</span></div>', unsafe_allow_html=True)
     if st.button("次へ", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
@@ -142,7 +144,7 @@ elif s["phase"] == "FACTION":
 
 elif s["phase"] == "GAME":
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">DEUS: {p2["territory"]:.0f}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="status-row"><div><span class="stat-label">本国</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="status-row"><div><span class="stat-label">本土</span><span class="stat-val">{p1["territory"]:.0f}</span></div><div><span class="stat-label">緩衝</span><span class="stat-val">{p1["colony"]:.0f}</span></div></div>', unsafe_allow_html=True)
     st.progress(min(p1['nuke_point']/200.0, 1.0))
 
     if p1["territory"] <= 0 or p2["territory"] <= 0:
