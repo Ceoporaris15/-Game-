@@ -118,7 +118,7 @@ setup_audio_engine()
 if s["difficulty"] is None:
     st.title("難易度選択")
     if st.button("小国", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; st.rerun()
-    if st.button("大国 (修正)", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 650.0; st.rerun()
+    if st.button("大国", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 650.0; st.rerun()
     if st.button("超大国", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 3500.0; st.rerun()
 elif s["faction"] is None:
     st.title("陣営プロトコル")
