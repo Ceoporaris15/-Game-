@@ -26,21 +26,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BGM設定 ---
-def setup_audio_engine():
+# --- 2. オーディオエンジン (BGM & SE) ---
+def play_se(type):
+    # Web Audio APIを使用したシンセサイザー音源
+    se_scripts = {
+        "soft": "var osc = a.createOscillator(); var g = a.createGain(); osc.type='square'; osc.connect(g); g.connect(a.destination); osc.frequency.setValueAtTime(150, a.currentTime); g.gain.setValueAtTime(0.1, a.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.1); osc.start(); osc.stop(a.currentTime + 0.1);",
+        "sharp": "var osc = a.createOscillator(); var g = a.createGain(); osc.type='sawtooth'; osc.connect(g); g.connect(a.destination); osc.frequency.setValueAtTime(880, a.currentTime); g.gain.setValueAtTime(0.05, a.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.2); osc.start(); osc.stop(a.currentTime + 0.2);",
+        "mute": "a.suspend(); setTimeout(() => a.resume(), 5000);" # 核使用時の静寂
+    }
+    st.components.v1.html(f"""<script>var a = new (window.AudioContext || window.webkitAudioContext)(); {se_scripts.get(type, "")}</script>""", height=0)
+
+def setup_bgm():
     try:
         with open('Vidnoz_AIMusic.mp3', 'rb') as f:
-            data = f.read()
-            b64 = base64.b64encode(data).decode()
-            audio_html = f"""<audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
-            <script>
-                var audio = window.parent.document.getElementById('bgm');
-                if (!audio) {{ audio = document.getElementById('bgm'); }}
-                window.parent.document.addEventListener('click', function() {{
-                    if (audio.paused) {{ audio.play(); }}
-                }}, {{once: false}});
-            </script>"""
-            st.components.v1.html(audio_html, height=0)
+            b64 = base64.b64encode(f.read()).decode()
+            st.components.v1.html(f"""<audio id="bgm" loop><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>
+                <script>var audio = window.parent.document.getElementById('bgm'); window.parent.document.addEventListener('click', () => {{ if(audio.paused) audio.play(); }}, {{once:false}});</script>""", height=0)
     except: pass
 
 # --- 3. ステート管理 ---
@@ -48,14 +49,13 @@ if 'state' not in st.session_state:
     st.session_state.state = {
         "p1": {"territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
         "p2": {"territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. 全アクション・ドクトリン同期完了。"],
-        "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None,
-        "phase": "DIFFICULTY"
+        "turn": 1, "logs": ["SYSTEM ONLINE. オーディオ同期完了。"],
+        "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
     }
 
 s = st.session_state.state
 p1, p2 = s["p1"], s["p2"]
-setup_audio_engine()
+setup_bgm()
 
 # --- 4. ロジック ---
 def player_step(cmd):
@@ -64,29 +64,31 @@ def player_step(cmd):
     else: a_mul, d_mul, o_mul, n_mul, spy_prob = 0.5, 0.8, 1.0, 1.0, 0.33
 
     if cmd == "EXP":
+        play_se("soft")
         p1["military"] += 25.0 * a_mul
         p1["nuke_point"] += 20 * n_mul
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}/核+{20*n_mul:.0f}")
-    elif cmd == "DEF": 
-        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 次の被弾を50%軽減。")
+        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a_mul:.0f}")
+    elif cmd == "DEF":
+        play_se("soft")
+        p1["shield"] = True; s["logs"].insert(0, "🛡防衛: 迎撃準備完了。")
     elif cmd == "MAR":
+        play_se("sharp")
         dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a_mul + 10.0, 10.0)
-        if p2["stun"] <= 0 and random.random() < 0.30:
-            dmg *= 0.5; p2["territory"] -= dmg; s["logs"].insert(0, f"🛡敵防衛: 打撃を{dmg:.0f}に抑えられた。")
-        else:
-            p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土へ{dmg:.0f}の打撃。")
+        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵領土へ{dmg:.0f}の打撃。")
     elif cmd == "OCC":
+        play_se("soft")
         calc_steal = ((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o_mul
-        steal = min(calc_steal, 50.0)
-        p1["colony"] += steal
-        s["logs"].insert(0, f"🚩占領: 緩衝地帯を+{steal:.0f}拡張(敵への被害なし)。")
+        steal = min(calc_steal, 50.0); p1["colony"] += steal
+        s["logs"].insert(0, f"🚩占領: 緩衝地帯+{steal:.0f}。")
     elif cmd == "SPY":
+        play_se("sharp")
         if random.random() < spy_prob:
             p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50)
-            s["logs"].insert(0, "🕵️工作成功: 敵核開発妨害(-50) & 麻痺。")
-        else: s["logs"].insert(0, "🕵️工作失敗: 通信が途絶。")
+            s["logs"].insert(0, "🕵️工作成功: 敵核妨害(-50)。")
+        else: s["logs"].insert(0, "🕵️工作失敗: 消息不明。")
     elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
+        play_se("mute") # 核兵器：静寂
+        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。静寂。")
 
     s["player_ap"] -= 1
     if s["player_ap"] <= 0:
@@ -95,7 +97,7 @@ def player_step(cmd):
         else:
             if p2["nuke_point"] >= 200:
                 p1["territory"] *= 0.3; p2["nuke_point"] = 0
-                s["logs"].insert(0, "☢️敵最終宣告: 本土が大破。")
+                s["logs"].insert(0, "☢️敵最終宣告。")
             else:
                 p2["military"] += 20.0
                 total_e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d_mul)
@@ -109,33 +111,24 @@ def player_step(cmd):
 
 # --- 5. UI ---
 if s["phase"] == "DIFFICULTY":
-    st.title("国家間Game玉")
-    if st.button("小国 (Easy)", use_container_width=True): s["difficulty"] = "小国"; p2["territory"] = 200.0; s["phase"] = "BRIEFING"; st.rerun()
-    if st.button("大国 (Normal)", use_container_width=True): s["difficulty"] = "大国"; p2["territory"] = 950.0; s["phase"] = "BRIEFING"; st.rerun()
-    if st.button("超大国 (Hard)", use_container_width=True): s["difficulty"] = "超大国"; p2["territory"] = 1200.0; s["phase"] = "BRIEFING"; st.rerun()
+    st.title("DEUS: 戦域選択")
+    for d in ["小国", "大国", "超大国"]:
+        if st.button(f"{d}", use_container_width=True):
+            s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]
+            s["phase"] = "BRIEFING"; st.rerun()
 
 elif s["phase"] == "BRIEFING":
     st.title("🛡️ DEUS 作戦マニュアル")
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【アクション詳細説明】</span><div class="briefing-text">'
-                '・<b>🛠軍拡</b>: 軍事力+25/核P+20。攻撃と最終兵器の基盤。<br>'
-                '・<b>🛡防衛</b>: 1Tのみ被弾ダメージを50%カット。<br>'
-                '・<b>⚔️進軍</b>: 敵領土を直接破壊。勝利への必須手段。<br>'
-                '・<b>🚩占領</b>: 緩衝地帯(盾)を拡張。<b>敵には無害</b>。ダメージを80%肩代わり。<br>'
-                '・<b>🕵️スパイ</b>: 敵核Pを-50し、敵の防御行動を2T封じます。<br>'
-                '・<b>☢️核兵器</b>: 核P200で発動。敵領土を残り15%まで焼き払います。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><span class="briefing-title">【国家特性】</span><div class="briefing-text">'
-                '・<b>🔵連合国</b>: 核開発速度2倍。スパイ成功率60%。核速攻向け。<br>'
-                '・<b>🔴枢軸国</b>: 攻撃1.5倍、占領1.2倍。防御0.8倍(脆い)。短期決戦型。<br>'
-                '・<b>🛠社会主義国</b>: 行動回数AP3。耐久200。攻撃0.5倍。持久戦向け。</div></div>', unsafe_allow_html=True)
-    if st.button("陣営選択へ進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
+    st.markdown('<div class="briefing-card"><span class="briefing-title">【特殊演出】</span><div class="briefing-text">・ボタン操作ごとに異なる電子音が鳴ります。<br>・<b>最終宣告(NUK)発動時、世界は5秒間の静寂に包まれます。</b></div></div>', unsafe_allow_html=True)
+    if st.button("進む", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
 
 elif s["phase"] == "FACTION":
     st.title("陣営プロトコル")
     c1, c2, c3 = st.columns(3)
-    if c1.button("連合国", use_container_width=True): s["faction"] = "連合国"; s["phase"] = "GAME"; st.rerun()
-    if c2.button("枢軸国", use_container_width=True): s["faction"] = "枢軸国"; s["phase"] = "GAME"; st.rerun()
+    if c1.button("連合国", use_container_width=True): s["faction"]="連合国"; s["phase"]="GAME"; st.rerun()
+    if c2.button("枢軸国", use_container_width=True): s["faction"]="枢軸国"; s["phase"]="GAME"; st.rerun()
     if c3.button("社会主義国", use_container_width=True): 
-        s["faction"] = "社会主義国"; p1["territory"] = 200.0; s["player_ap"] = 3; s["max_ap"] = 3; s["phase"] = "GAME"; st.rerun()
+        s["faction"]="社会主義国"; p1["territory"]=200.0; s["player_ap"]=3; s["max_ap"]=3; s["phase"]="GAME"; st.rerun()
 
 elif s["phase"] == "GAME":
     st.markdown(f'<div class="enemy-banner"><span class="enemy-text">敵領土: {p2["territory"]:.0f} | 敵核: {p2["nuke_point"]:.0f}/200</span></div>', unsafe_allow_html=True)
@@ -145,7 +138,6 @@ elif s["phase"] == "GAME":
         st.success("VICTORY" if p2["territory"] <= 0 else "DEFEAT")
         if st.button("REBOOT", use_container_width=True): st.session_state.clear(); st.rerun()
     else:
-        st.caption(f"T-{s['turn']} | AP: {s['player_ap']} | {s['faction']}")
         if p1["nuke_point"] >= 200:
             if st.button("☢️ 最終宣告執行", type="primary", use_container_width=True): player_step("NUK"); st.rerun()
         c1, c2, c3 = st.columns(3)
@@ -155,5 +147,4 @@ elif s["phase"] == "GAME":
         c4, c5 = st.columns(2)
         if c4.button("⚔️進軍", use_container_width=True): player_step("MAR"); st.rerun()
         if c5.button("🚩占領", use_container_width=True): player_step("OCC"); st.rerun()
-    log_html = "".join([f'<div>{log}</div>' for log in s["logs"][:2]])
-    st.markdown(f'<div class="log-box">{log_html}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="log-box">{"".join([f"<div>{l}</div>" for l in s["logs"][:2]])}</div>', unsafe_allow_html=True)
