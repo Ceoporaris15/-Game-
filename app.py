@@ -9,7 +9,7 @@ try:
     key = st.secrets["SUPABASE_KEY"]
     supabase = create_client(url, key)
 except:
-    st.error("Secretsの設定(SUPABASE_URL, SUPABASE_KEY)を確認してください。")
+    st.error("Secrets (SUPABASE_URL, SUPABASE_KEY) が設定されていません。")
     st.stop()
 
 def get_game(rid):
@@ -22,17 +22,17 @@ def sync(rid, updates):
     try: supabase.table("games").update(updates).eq("id", rid).execute()
     except: pass
 
-# --- 2. タクティカルUIデザイン ---
-st.set_page_config(page_title="DEUS ONLINE: FINAL", layout="centered")
+# --- 2. UIデザイン ---
+st.set_page_config(page_title="DEUS ONLINE: COMMANDER", layout="centered")
 st.markdown("""
     <style>
     html, body, [data-testid="stAppViewContainer"], .main {
-        background-color: #000000 !important; color: #00ffcc !important;
+        background-color: #000 !important; color: #00ffcc !important;
         font-family: 'Hiragino Kaku Gothic Pro', sans-serif;
     }
     .stButton > button { 
         background-color: #111 !important; color: #00ffcc !important; 
-        border: 2px solid #00ffcc !important; width: 100% !important; font-weight: bold !important;
+        border: 2px solid #00ffcc !important; width: 100% !important;
     }
     .status-row { display: flex; align-items: center; margin-bottom: 6px; }
     .status-label { width: 100px; font-size: 0.75rem; font-weight: bold; }
@@ -41,7 +41,7 @@ st.markdown("""
     .fill-sh { background: #3498db; height: 100%; }
     .fill-nk { background: #9b59b6; height: 100%; }
     .fill-enemy { background: #ff4b4b; height: 100%; }
-    .admin-box { border: 2px dashed #ff4b4b; padding: 15px; margin-top: 20px; border-radius: 10px; background: #100; }
+    .admin-panel { border: 2px dashed #ff4b4b; padding: 15px; margin-top: 20px; border-radius: 10px; background: #1a0000; }
     .log-box { background: #050505; padding: 10px; border: 1px solid #333; height: 100px; font-size: 0.8rem; overflow-y: auto; }
     </style>
     """, unsafe_allow_html=True)
@@ -49,63 +49,69 @@ st.markdown("""
 if 'room_id' not in st.session_state: st.session_state.room_id = None
 if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
-# --- 3. 接続画面 ---
+# --- 3. 接続画面 (ここに入力欄を追加) ---
 if not st.session_state.room_id:
     st.title("🛡️ DEUS ONLINE")
-    rid = st.text_input("作戦コード", "7777")
+    st.subheader("作戦海域への接続")
+    
+    rid = st.text_input("作戦コード (Room ID)", "7777")
     role = st.radio("役割を選択", ["p1", "p2"], horizontal=True)
     c_name = st.text_input("国名を入力", "帝國")
     
-    # 秘密の認証スロット
-    auth_code = st.text_input("プロトコル・キー (管理者のみ)", type="password")
+    # 【管理者専用】認証スロット
+    st.markdown("---")
+    auth_code = st.text_input("🔐 開発者認証コード (空欄可)", type="password", help="管理者権限を有効化します")
     
-    if st.button("接続"):
-        if auth_code == "admin-zero": # ← あなただけが知るチート解禁キー
+    if st.button("サーバーへ接続"):
+        # コードが一致すれば管理者フラグを立てる
+        if auth_code == "admin-zero":
             st.session_state.is_admin = True
+            st.toast("管理者権限が承認されました。")
         
         if role == "p1":
             init_data = {
                 "id": rid, "p1_hp": 1000.0, "p2_hp": 1000.0, "p1_colony": 50.0, "p2_colony": 50.0, 
-                "p1_nuke": 0.0, "p2_nuke": 0.0, "turn": "p1", "ap": 2, "chat": ["🛰️ ネットワークオンライン。"],
+                "p1_nuke": 0.0, "p2_nuke": 0.0, "turn": "p1", "ap": 2, "chat": ["🛰️ 接続確立。"],
                 "p1_shield": 0, "p2_shield": 0, "p1_nuke_shield_count": 0, "p2_nuke_shield_count": 0,
                 "neutral_owner": "none"
             }
             supabase.table("games").delete().eq("id", rid).execute()
             supabase.table("games").insert(init_data).execute()
+        
         sync(rid, {f"{role}_country": c_name})
         st.session_state.room_id, st.session_state.role = rid, role
         st.rerun()
 
-# --- 4. メインゲーム ---
+# --- 4. ゲーム本編 ---
 else:
     data = get_game(st.session_state.room_id)
     if not data: st.rerun()
     me, opp = st.session_state.role, ("p2" if st.session_state.role == "p1" else "p1")
     my_name, enemy_name = data.get(f'{me}_country', '自国'), data.get(f'{opp}_country', '敵国')
     
-    # 勝利判定
-    if data[f"{me}_hp"] <= 0: st.error("【 敗北 】 本土陥落。"); st.stop()
-    if data[f"{opp}_hp"] <= 0: st.success("【 勝利 】 敵国制圧！"); st.stop()
+    # 勝利条件
+    if data[f"{me}_hp"] <= 0: st.error("敗北：本土陥落"); st.stop()
+    if data[f"{opp}_hp"] <= 0: st.success("勝利：敵国制圧"); st.stop()
 
-    # 敵軍情報
-    st.markdown(f"### 🚩 ENEMY: {enemy_name}")
+    # 敵軍ステータス
+    st.markdown(f"🚩 **ENEMY: {enemy_name}**")
     st.markdown(f'<div class="status-row"><div class="status-label">敵領土HP</div><div class="bar-bg"><div class="fill-enemy" style="width:{data[f"{opp}_hp"]/10}%"></div></div></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div class="status-label">敵核開発</div><div class="bar-bg"><div class="fill-nk" style="width:{data[f"{opp}_nuke"]/2}%"></div></div></div>', unsafe_allow_html=True)
     st.caption(f"盾: {data[f'{opp}_shield']} | 核盾: {data[f'{opp}_nuke_shield_count']} | 植民地: {data[f'{opp}_colony']:.0f}")
 
     st.divider()
 
-    # 自軍情報
+    # 自軍ステータス
     n_owner = data.get('neutral_owner', 'none')
-    n_disp = "🏳️ 中立地帯: 未占領" if n_owner == 'none' else (f"🏳️ 中立地帯: {my_name} 支配中" if n_owner == me else f"🏳️ 中立地帯: {enemy_name} 支配中")
-    st.write(f"**{n_disp}**")
+    n_disp = "🏳️ 中立地帯: 未占領" if n_owner == 'none' else (f"🏳️ 中立地帯: {my_name} 支配" if n_owner == me else f"🏳️ 中立地帯: {enemy_name} 支配")
+    st.info(n_disp)
     
-    st.markdown(f"### 🛡️ SELF: {my_name}")
-    st.markdown(f'<div class="status-row"><div class="status-label">自軍領土HP</div><div class="bar-bg"><div class="fill-hp" style="width:{data[f"{me}_hp"]/10}%"></div></div></div>', unsafe_allow_html=True)
+    st.markdown(f"🛡️ **SELF: {my_name}**")
+    st.markdown(f'<div class="status-row"><div class="status-label">本土HP</div><div class="bar-bg"><div class="fill-hp" style="width:{data[f"{me}_hp"]/10}%"></div></div></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div class="status-label">植民地</div><div class="bar-bg"><div class="fill-sh" style="width:{data[f"{me}_colony"]}%"></div></div></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="status-row"><div class="status-label">核開発</div><div class="bar-bg"><div class="fill-nk" style="width:{data[f"{me}_nuke"]/2}%"></div></div></div>', unsafe_allow_html=True)
 
-    # ログ表示
+    # ログ
     logs = "".join([f"<div>{m}</div>" for m in data.get('chat', [])[-3:]])
     st.markdown(f'<div class="log-box">{logs}</div>', unsafe_allow_html=True)
 
@@ -120,28 +126,26 @@ else:
         with c2: 
             if st.button("🛡️防衛"):
                 if data[f'{me}_colony'] >= 20:
-                    s1, s2 = (1 if random.random() < 0.25 else 0), (1 if random.random() < 0.066 else 0)
-                    sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']-20, f"{me}_shield": data[f"{me}_shield"]+s1, f"{me}_nuke_shield_count": data[f"{me}_nuke_shield_count"]+s2, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛡️ {my_name}: 防衛構築"]}); st.rerun()
+                    s1, s2 = (1 if random.random() < 0.25 else 0), (1 if random.random() < 0.06 else 0)
+                    sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']-20, f"{me}_shield": data[f"{me}_shield"]+s1, f"{me}_nuke_shield_count": data[f"{me}_nuke_shield_count"]+s2, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛡️ {my_name}: 防衛網構築"]}); st.rerun()
         with c3:
             if st.button("🕵️工作"):
-                sn = (random.random() < 0.5)
                 up = {"ap": data['ap']-1, "chat": data.get('chat', [])+[f"🕵️ {my_name}: 工作員投入"]}
-                if sn: up[f"{opp}_nuke"] = max(0, data[f"{opp}_nuke"]-100)
+                if random.random() < 0.5: up[f"{opp}_nuke"] = max(0, data[f"{opp}_nuke"]-100)
                 sync(st.session_state.room_id, up); st.rerun()
         with c4:
             target = st.radio("目標", ["敵国", "中立"], horizontal=True, label_visibility="collapsed")
             if st.button("⚔️進軍"):
-                if target == "中立": sync(st.session_state.room_id, {"neutral_owner": me, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🏳️ {my_name}: 中立支配"]}); st.rerun()
+                if target == "中立": sync(st.session_state.room_id, {"neutral_owner": me, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🏳️ {my_name}: 中立占領"]}); st.rerun()
                 else:
                     if data[f"{opp}_shield"] > 0: sync(st.session_state.room_id, {f"{opp}_shield": data[f"{opp}_shield"]-1, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛡️ {enemy_name}: 防御"]} ); st.rerun()
                     else:
-                        dmg = (45 + (data[f'{me}_nuke']*0.53)) + random.randint(-5, 5)
+                        dmg = 45 + (data[f'{me}_nuke']*0.53)
                         rem_col = data[f'{opp}_colony']
                         sync(st.session_state.room_id, {f"{opp}_colony": max(0, rem_col-dmg), f"{opp}_hp": max(0, data[f'{opp}_hp']-max(0, dmg-rem_col)), "ap": data['ap']-1, "chat": data.get('chat', [])+[f"⚔️ {my_name}: 攻撃"]}); st.rerun()
         with c5:
-            if st.button("🚩占領"): sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']+55, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🚩 {my_name}: 占領成功"]}); st.rerun()
+            if st.button("🚩占領"): sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']+55, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🚩 {my_name}: 占領"]}); st.rerun()
 
-        # 神風 & 核
         if data[f"{me}_hp"] <= 200:
             if st.button("🏮 神風", type="primary"): sync(st.session_state.room_id, {f"{opp}_hp": max(0, data[f"{opp}_hp"]-400), f"{me}_colony": 0, f"{me}_hp": data[f"{me}_hp"]*0.1, "ap": 0, "chat": data.get('chat', [])+[f"🏮 {my_name}: 神風特攻"]}); st.rerun()
         if data[f'{me}_nuke'] >= 200:
@@ -154,23 +158,23 @@ else:
         st.info("敵国待機中...")
         time.sleep(4); st.rerun()
 
-    # --- 🛠️ 開発者専用オーバーライド・パネル ---
+    # --- 🛠️ 開発者専用：隠し操作パネル ---
     if st.session_state.is_admin:
-        st.markdown('<div class="admin-box">', unsafe_allow_html=True)
-        st.error("🚨 ADMIN OVERRIDE PANEL ENABLED")
+        st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
+        st.error("🚨 ADMIN OVERRIDE ENABLED")
         ca, cb, cc = st.columns(3)
         with ca:
-            if st.button("☢️ 即時核投下"):
-                sync(st.session_state.room_id, {f"{opp}_hp": 0, "chat": data['chat']+[f"🚨 {my_name}: 管理者権限による強制殲滅"]}); st.rerun()
+            if st.button("☢️ 即時殲滅"):
+                sync(st.session_state.room_id, {f"{opp}_hp": 0, "chat": data['chat']+[f"🚨 {my_name}: 管理者強制終了"]}); st.rerun()
         with cb:
-            if st.button("🔧 本土全修復"):
+            if st.button("🔧 全修復"):
                 sync(st.session_state.room_id, {f"{me}_hp": 1000, f"{me}_colony": 100}); st.rerun()
         with cc:
-            if st.button("🛡️ 鉄壁の盾"):
+            if st.button("🛡️ 鉄壁"):
                 sync(st.session_state.room_id, {f"{me}_shield": 99, f"{me}_nuke_shield_count": 99}); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with st.form("chat_form", clear_on_submit=True):
-        msg = st.text_input("通信文", label_visibility="collapsed", placeholder="メッセージ...")
+        msg = st.text_input("通信文", label_visibility="collapsed", placeholder="メッセージ送信...")
         if st.form_submit_button("送信"):
             sync(st.session_state.room_id, {"chat": data['chat'] + [f"💬 {my_name}: {msg}"]}); st.rerun()
