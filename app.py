@@ -182,3 +182,21 @@ elif s["phase"] == "GAME":
         if c5.button("🚩占領", use_container_width=True): player_step("OCC"); st.rerun()
         
     st.markdown(f'<div class="log-box">{"".join([f"<div>>> {l}</div>" for l in s["logs"][:2]])}</div>', unsafe_allow_html=True)
+    # --- (中略: 接続設定などは以前のコードと同じ) ---
+
+# --- チャット送信 & 隠しコマンド判定 ---
+with st.form("chat_form", clear_on_submit=True):
+    msg = st.text_input("暗号通信文", label_visibility="collapsed", placeholder="通信文を入力...")
+    if st.form_submit_button("暗号送信"):
+        if msg == "nuke-max":  # ← これがチートコード（隠しワード）
+            sync(st.session_state.room_id, {
+                f"{me}_nuke": 200, 
+                "chat": data.get('chat', []) + [f"⚠️ {my_name}: システム・オーバーライド（核充填完了）"]
+            })
+            st.success("核エネルギーを強制充填しました。")
+            time.sleep(1)
+            st.rerun()
+        else:
+            c_data = get_game(st.session_state.room_id)
+            sync(st.session_state.room_id, {"chat": c_data['chat'] + [f"💬 {my_name}: {msg}"]})
+            st.rerun()
