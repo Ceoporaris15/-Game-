@@ -1,202 +1,173 @@
 import streamlit as st
+from supabase import create_client
+import time
 import random
-import base64
 
-# --- 1. レイアウト設定 ---
-st.set_page_config(page_title="DEUS", layout="centered")
+# --- 1. 接続設定 ---
+try:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    supabase = create_client(url, key)
+except:
+    st.error("Secretsの設定(SUPABASE_URL, SUPABASE_KEY)を確認してください。")
+    st.stop()
 
+def get_game(rid):
+    try:
+        res = supabase.table("games").select("*").eq("id", rid).execute()
+        return res.data[0] if res.data else None
+    except: return None
+
+def sync(rid, updates):
+    try: supabase.table("games").update(updates).eq("id", rid).execute()
+    except: pass
+
+# --- 2. 漆黒のタクティカルUI ---
+st.set_page_config(page_title="DEUS ONLINE: FINAL", layout="centered")
 st.markdown("""
     <style>
-    html, body, [data-testid="stAppViewContainer"] { background-color: #000; color: #FFF; overflow: hidden; }
-    .enemy-banner { background-color: #200; border-bottom: 1px solid #F00; padding: 5px; text-align: center; margin: -60px -15px 10px -15px; }
-    .enemy-text { color: #F00; font-weight: bold; font-size: 0.9rem; letter-spacing: 2px; }
-    
-    .stat-section { display: flex; gap: 8px; margin-bottom: 8px; }
-    .stat-card { flex: 1; background: #111; border: 1px solid #333; padding: 6px; border-radius: 4px; }
-    .bar-label { font-size: 0.7rem; color: #AAA; margin-bottom: 2px; display: flex; justify-content: space-between; }
-    .hp-bar-bg { background: #222; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 4px; border: 1px solid #333; }
-    .hp-bar-fill { background: linear-gradient(90deg, #d4af37, #f1c40f); height: 100%; transition: width 0.5s; }
-    .shield-bar-fill { background: linear-gradient(90deg, #3498db, #2980b9); height: 100%; transition: width 0.5s; }
-    .enemy-bar-fill { background: linear-gradient(90deg, #c0392b, #e74c3c); height: 100%; transition: width 0.5s; }
-    .nuke-bar-fill { background: linear-gradient(90deg, #9b59b6, #8e44ad); height: 100%; transition: width 0.5s; }
-    
-    .briefing-card { background: #111; border: 1px solid #333; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
-    .briefing-title { color: #d4af37; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #444; margin-bottom: 5px; }
-    .briefing-text { font-size: 0.75rem; color: #CCC; line-height: 1.5; }
-    
-    div[data-testid="column"] button, div[data-testid="stVerticalBlock"] button {
-        height: 38px !important; background-color: #1a1a1a !important; color: #d4af37 !important; border: 1px solid #d4af37 !important; font-size: 0.8rem !important;
+    html, body, [data-testid="stAppViewContainer"], .main {
+        background-color: #000000 !important; color: #00ffcc !important;
+        font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
     }
-    .log-box { background: #000; border-top: 1px solid #333; padding: 4px 8px; height: 50px; font-size: 0.75rem; color: #CCC; margin-top: 10px; font-family: monospace; }
+    .stButton > button { 
+        background-color: #000000 !important; color: #00ffcc !important; 
+        border: 2px solid #00ffcc !important; width: 100% !important; font-weight: bold !important;
+    }
+    .status-row { display: flex; align-items: center; margin-bottom: 6px; }
+    .status-label { width: 100px; font-size: 0.75rem; font-weight: bold; }
+    .bar-bg { background: #111; width: 100%; height: 14px; border: 1px solid #333; overflow: hidden; }
+    .fill-hp { background: #00ffcc; height: 100%; }
+    .fill-sh { background: #3498db; height: 100%; }
+    .fill-nk { background: #9b59b6; height: 100%; }
+    .fill-enemy { background: #ff4b4b; height: 100%; }
+    .log-box { background: #050505; padding: 10px; border: 1px solid #222; height: 100px; font-size: 0.8rem; overflow-y: auto; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 音響再生エンジン ---
-def play_sound(freq=440, type='sine', duration=0.2):
-    # JavaScriptを直接埋め込んで音を鳴らす
-    st.components.v1.html(f"""
-        <script>
-        (function() {{
-            const c = new (window.AudioContext || window.webkitAudioContext)();
-            const o = c.createOscillator();
-            const g = c.createGain();
-            o.type = '{type}';
-            o.frequency.setValueAtTime({freq}, c.currentTime);
-            g.gain.setValueAtTime(0.1, c.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.01, c.currentTime + {duration});
-            o.connect(g);
-            g.connect(c.destination);
-            o.start();
-            o.stop(c.currentTime + {duration});
-        }})();
-        </script>
-    """, height=0)
+if 'room_id' not in st.session_state: st.session_state.room_id = None
 
-def setup_bgm():
-    # ローカルのVidnoz_AIMusic.mp3を読み込み、HTMLに埋め込む
-    try:
-        with open('Vidnoz_AIMusic.mp3', 'rb') as f:
-            data = base64.b64encode(f.read()).decode()
-            st.components.v1.html(f"""
-                <audio id="bgm" loop src="data:audio/mp3;base64,{data}"></audio>
-                <script>
-                const a = document.getElementById('bgm');
-                // 画面クリックでBGM開始
-                window.parent.document.addEventListener('mousedown', () => a.play(), {{once: true}});
-                </script>
-            """, height=0)
-    except: pass
+# --- 3. 接続画面 ---
+if not st.session_state.room_id:
+    st.title("🛡️ DEUS ONLINE")
+    rid = st.text_input("作戦コード", "7777")
+    role = st.radio("役割を選択", ["p1", "p2"], horizontal=True)
+    c_name = st.text_input("国名を入力", "帝國")
+    if st.button("接続"):
+        if role == "p1":
+            init_data = {
+                "id": rid, "p1_hp": 1000.0, "p2_hp": 1000.0, "p1_colony": 50.0, "p2_colony": 50.0, 
+                "p1_nuke": 0.0, "p2_nuke": 0.0, "turn": "p1", "ap": 2, "chat": ["🛰️ システムオンライン。"],
+                "p1_shield": 0, "p2_shield": 0, "p1_nuke_shield_count": 0, "p2_nuke_shield_count": 0,
+                "neutral_owner": "none"
+            }
+            supabase.table("games").delete().eq("id", rid).execute()
+            supabase.table("games").insert(init_data).execute()
+        sync(rid, {f"{role}_country": c_name})
+        st.session_state.room_id, st.session_state.role = rid, role
+        st.rerun()
 
-# --- 3. ステート管理 ---
-if 'state' not in st.session_state:
-    st.session_state.state = {
-        "p1": {"territory": 150.0, "max_territory": 150.0, "military": 0.0, "colony": 50.0, "nuke_point": 0, "shield": False},
-        "p2": {"territory": 800.0, "max_territory": 800.0, "military": 0.0, "nuke_point": 0, "stun": 0}, 
-        "turn": 1, "logs": ["SYSTEM ONLINE. クリックで音響同期。"],
-        "player_ap": 2, "max_ap": 2, "difficulty": None, "faction": None, "phase": "DIFFICULTY"
-    }
-
-s = st.session_state.state
-p1, p2 = s["p1"], s["p2"]
-setup_bgm()
-
-# --- 4. ロジック ---
-def player_step(cmd):
-    if s["faction"] == "連合国": a, d, o, n, sp = 1.0, 1.0, 1.0, 2.0, 0.60
-    elif s["faction"] == "枢軸國": a, d, o, n, sp = 1.5, 0.8, 1.2, 1.0, 0.33
-    else: a, d, o, n, sp = 0.5, 0.8, 1.0, 1.0, 0.33
-
-    if cmd == "EXP":
-        play_sound(300, 'sine'); p1["military"] += 25.0 * a; p1["nuke_point"] += 20 * n
-        s["logs"].insert(0, f"🛠軍拡: 軍備+{25.0*a:.0f}")
-    elif cmd == "DEF":
-        play_sound(350, 'sine'); p1["shield"] = True; s["logs"].insert(0, "🛡防衛: シールド展開。")
-    elif cmd == "MAR":
-        play_sound(500, 'square'); dmg = max(((p1["military"] * 0.5) + (p1["colony"] * 0.6)) * a + 10.0, 10.0)
-        p2["territory"] -= dmg; s["logs"].insert(0, f"⚔️進軍: 敵へ{dmg:.0f}の打撃。")
-    elif cmd == "OCC":
-        play_sound(400, 'sine'); steal = min(((max(p2["territory"] * 0.15, 25.0)) + 10.0) * o, 50.0)
-        p1["colony"] += steal; s["logs"].insert(0, f"🚩占領: 緩衝地帯拡張。")
-    elif cmd == "SPY":
-        play_sound(600, 'square'); 
-        if random.random() < sp:
-            p2["stun"] = 2; p2["nuke_point"] = max(0, p2["nuke_point"] - 50); s["logs"].insert(0, "🕵️スパイ成功。")
-        else: s["logs"].insert(0, "🕵️スパイ失敗。")
-    elif cmd == "NUK":
-        p2["territory"] *= 0.15; p1["nuke_point"] = 0; s["logs"].insert(0, "☢️最終宣告執行。")
-
-    s["player_ap"] -= 1
-    if s["player_ap"] <= 0:
-        p2["nuke_point"] += (25.0 + (10.0 if s["difficulty"] == "超大国" else 0))
-        if p2["stun"] > 0: p2["stun"] -= 1
-        else:
-            if p2["nuke_point"] >= 200: p1["territory"] *= 0.3; p2["nuke_point"] = 0
-            else:
-                p2["military"] += 20.0; e_dmg = (max((p2["military"] * 0.4) + 20.0, 20.0) * (1.2 if s["difficulty"] == "超大国" else 1.0)) * (1.0 / d)
-                if p1["shield"]: e_dmg *= 0.5
-                if p1["colony"] > 0: p1["colony"] -= e_dmg * 0.8; p1["territory"] -= e_dmg * 0.2
-                else: p1["territory"] -= e_dmg
-        s["player_ap"] = s["max_ap"]; s["turn"] += 1; p1["shield"] = False
-
-# --- 5. UI ---
-if s["phase"] == "DIFFICULTY":
-    st.title("DEUS: 戦域選択")
-    for d in ["小国", "大国", "超大国"]:
-        if st.button(d, key=d, use_container_width=True):
-            s["difficulty"] = d; p2["territory"] = {"小国":200.0, "大国":950.0, "超大国":1200.0}[d]; p2["max_territory"] = p2["territory"]; s["phase"] = "BRIEFING"; st.rerun()
-
-elif s["phase"] == "BRIEFING":
-    st.title("🛡️ 作戦説明書")
-    st.markdown('<div class="briefing-card"><div class="briefing-title">【アクション規定】</div><div class="briefing-text">'
-                '・🛠<b>軍拡</b>: 軍備・核P増加。強化の基本。<br>・🛡<b>防衛</b>: 次の被弾を50%軽減。<br>・⚔️<b>進軍</b>: 敵領土を直接破壊。<br>'
-                '・🚩<b>占領</b>: 緩衝地帯を拡張。敵に損害なし。<br>・🕵️<b>スパイ</b>: 敵核開発を妨害。麻痺させる。<br>・☢️<b>核兵器</b>: 200Pで敵を85%破壊。</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="briefing-card"><div class="briefing-title">【国家特性】</div><div class="briefing-text">'
-                '・<b>連合国</b>: 核速度2倍。スパイ60%。<br>・<b>枢軸國</b>: 攻撃1.5倍。防御弱め。<br>・<b>社会主義国</b>: 行動回数APが3。</div></div>', unsafe_allow_html=True)
-    if st.button("陣営選択へ", use_container_width=True): s["phase"] = "FACTION"; st.rerun()
-
-elif s["phase"] == "FACTION":
-    st.title("陣営プロトコル選択")
-    c1, c2, c3 = st.columns(3)
-    if c1.button("連合国", use_container_width=True): s["faction"]="連合国"; s["phase"]="GAME"; st.rerun()
-    if c2.button("枢軸國", use_container_width=True): s["faction"]="枢軸國"; s["phase"]="GAME"; st.rerun()
-    if c3.button("社会主義国", use_container_width=True): s["faction"]="社会主義国"; p1["territory"]=200.0; p1["max_territory"]=200.0; s["player_ap"]=3; s["max_ap"]=3; s["phase"]="GAME"; st.rerun()
-
-elif s["phase"] == "GAME":
-    p1_hp_pct = max(p1["territory"] / p1["max_territory"] * 100, 0)
-    p2_hp_pct = max(p2["territory"] / p2["max_territory"] * 100, 0)
-    colony_pct = max(min(p1["colony"] / 100 * 100, 100), 0)
-    p1_nuke_pct = min(p1['nuke_point']/2, 100)
-    p2_nuke_pct = min(p2['nuke_point']/2, 100)
-
-    st.markdown(f"""
-    <div class="enemy-banner"><span class="enemy-text">第 {s['turn']} ターン (AP:{s['player_ap']})</span></div>
-    <div class="stat-section">
-        <div class="stat-card">
-            <div class="bar-label"><span>自国本土</span><span>{p1['territory']:.0f}</span></div>
-            <div class="hp-bar-bg"><div class="hp-bar-fill" style="width: {p1_hp_pct}%;"></div></div>
-            <div class="bar-label"><span>緩衝地帯</span><span>{p1['colony']:.0f}</span></div>
-            <div class="hp-bar-bg"><div class="shield-bar-fill" style="width: {colony_pct}%;"></div></div>
-            <div class="bar-label"><span>自国核開発</span><span>{p1['nuke_point']:.0f}/200</span></div>
-            <div class="hp-bar-bg"><div class="nuke-bar-fill" style="width: {p1_nuke_pct}%;"></div></div>
-        </div>
-        <div class="stat-card">
-            <div class="bar-label"><span>敵軍領土</span><span>{p2['territory']:.0f}</span></div>
-            <div class="hp-bar-bg"><div class="enemy-bar-fill" style="width: {p2_hp_pct}%;"></div></div>
-            <div class="bar-label"><span>敵軍核開発</span><span>{p2['nuke_point']:.0f}/200</span></div>
-            <div class="hp-bar-bg"><div class="enemy-bar-fill" style="width: {p2_nuke_pct}%; opacity: 0.5;"></div></div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+# --- 4. メインゲーム ---
+else:
+    data = get_game(st.session_state.room_id)
+    if not data: st.rerun()
     
-    if p1["territory"] <= 0 or p2["territory"] <= 0:
-        st.success("勝利" if p2["territory"] <= 0 else "敗北")
-        if st.button("再起動", use_container_width=True): st.session_state.clear(); st.rerun()
-    else:
-        if p1["nuke_point"] >= 200:
-            if st.button("☢️ 最終宣告執行", type="primary", use_container_width=True): player_step("NUK"); st.rerun()
-        c1, c2, c3 = st.columns(3); c4, c5 = st.columns(2)
-        if c1.button("🛠軍拡", use_container_width=True): player_step("EXP"); st.rerun()
-        if c2.button("🛡防衛", use_container_width=True): player_step("DEF"); st.rerun()
-        if c3.button("🕵️スパイ", use_container_width=True): player_step("SPY"); st.rerun()
-        if c4.button("⚔️進軍", use_container_width=True): player_step("MAR"); st.rerun()
-        if c5.button("🚩占領", use_container_width=True): player_step("OCC"); st.rerun()
-        
-    st.markdown(f'<div class="log-box">{"".join([f"<div>>> {l}</div>" for l in s["logs"][:2]])}</div>', unsafe_allow_html=True)
-    # --- (中略: 接続設定などは以前のコードと同じ) ---
+    me, opp = st.session_state.role, ("p2" if st.session_state.role == "p1" else "p1")
+    my_name, enemy_name = data.get(f'{me}_country', '自国'), data.get(f'{opp}_country', '敵国')
+    
+    # 勝敗判定 (本土HP 0)
+    if data[f"{me}_hp"] <= 0: st.error("【 敗北 】 本土陥落。"); st.stop()
+    if data[f"{opp}_hp"] <= 0: st.success("【 勝利 】 敵国制圧！"); st.stop()
 
-# --- チャット送信 & 隠しコマンド判定 ---
-with st.form("chat_form", clear_on_submit=True):
-    msg = st.text_input("暗号通信文", label_visibility="collapsed", placeholder="通信文を入力...")
-    if st.form_submit_button("暗号送信"):
-        if msg == "nuke-max":  # ← これがチートコード（隠しワード）
-            sync(st.session_state.room_id, {
-                f"{me}_nuke": 200, 
-                "chat": data.get('chat', []) + [f"⚠️ {my_name}: システム・オーバーライド（核充填完了）"]
-            })
-            st.success("核エネルギーを強制充填しました。")
-            time.sleep(1)
-            st.rerun()
-        else:
-            c_data = get_game(st.session_state.room_id)
-            sync(st.session_state.room_id, {"chat": c_data['chat'] + [f"💬 {my_name}: {msg}"]})
-            st.rerun()
+    # --- 敵軍インテリジェンス (可視化) ---
+    st.markdown(f"### 🚩 ENEMY: {enemy_name}")
+    st.markdown(f"""
+        <div class="status-row"><div class="status-label">敵領土HP</div><div class="bar-bg"><div class="fill-enemy" style="width:{data[f'{opp}_hp']/10}%"></div></div></div>
+        <div class="status-row"><div class="status-label">敵核開発</div><div class="bar-bg"><div class="fill-nk" style="width:{data[f'{opp}_nuke']/2}%"></div></div></div>
+    """, unsafe_allow_html=True)
+    st.caption(f"盾: {data[f'{opp}_shield']} | ☢️核盾: {data[f'{opp}_nuke_shield_count']} | 植民地: {data[f'{opp}_colony']:.0f}")
+
+    st.divider()
+
+    # --- 自軍ステータス ---
+    n_owner = data.get('neutral_owner', 'none')
+    n_disp = "🏳️ 中立地帯: 未占領" if n_owner == 'none' else (f"🏳️ 中立地帯: {my_name} 支配中" if n_owner == me else f"🏳️ 中立地帯: {enemy_name} 支配中")
+    st.markdown(f"**{n_disp}**")
+    
+    st.subheader(f"🛡️ SELF: {my_name}")
+    st.markdown(f"""
+        <div class="status-row"><div class="status-label">自軍本土HP</div><div class="bar-bg"><div class="fill-hp" style="width:{data[f'{me}_hp']/10}%"></div></div></div>
+        <div class="status-row"><div class="status-label">植民地</div><div class="bar-bg"><div class="fill-sh" style="width:{data[f'{me}_colony']}%"></div></div></div>
+        <div class="status-row"><div class="status-label">核開発</div><div class="bar-bg"><div class="fill-nk" style="width:{data[f'{me}_nuke']/2}%"></div></div></div>
+    """, unsafe_allow_html=True)
+    st.caption(f"🛡️ 通常盾: {data[f'{me}_shield']} | ☢️ 対核盾: {data[f'{me}_nuke_shield_count']}")
+
+    # ログ
+    logs = "".join([f"<div>{m}</div>" for m in data.get('chat', [])[-3:]])
+    st.markdown(f'<div class="log-box">{logs}</div>', unsafe_allow_html=True)
+
+    # アクション
+    if data['turn'] == me:
+        if n_owner == me and data['ap'] == 2:
+            sync(st.session_state.room_id, {f"{me}_nuke": min(200, data[f'{me}_nuke'] + 15)})
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1: 
+            if st.button("🛠️軍拡"): sync(st.session_state.room_id, {f"{me}_nuke": min(200, data[f'{me}_nuke']+40), "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛠️ {my_name}: 軍拡"]}); st.rerun()
+        with c2: 
+            if st.button("🛡️防衛"):
+                if data[f'{me}_colony'] >= 20:
+                    s1, s2 = (1 if random.random() < 0.25 else 0), (1 if random.random() < 0.066 else 0)
+                    sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']-20, f"{me}_shield": data[f"{me}_shield"]+s1, f"{me}_nuke_shield_count": data[f"{me}_nuke_shield_count"]+s2, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛡️ {my_name}: 防衛構築"]}); st.rerun()
+        with c3:
+            if st.button("🕵️工作"):
+                sn = (random.random() < 0.5)
+                up = {"ap": data['ap']-1, "chat": data.get('chat', [])+[f"🕵️ {my_name}: 工作員投入"]}
+                if sn: up[f"{opp}_nuke"] = max(0, data[f"{opp}_nuke"]-100)
+                sync(st.session_state.room_id, up); st.rerun()
+        with c4:
+            target = st.radio("目標", ["敵国", "中立"], horizontal=True, label_visibility="collapsed")
+            if st.button("⚔️進軍"):
+                if target == "中立": sync(st.session_state.room_id, {"neutral_owner": me, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🏳️ {my_name}: 中立占領"]}); st.rerun()
+                else:
+                    if data[f"{opp}_shield"] > 0: sync(st.session_state.room_id, {f"{opp}_shield": data[f"{opp}_shield"]-1, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🛡️ {enemy_name}: 防御"]} ); st.rerun()
+                    else:
+                        dmg = (45 + (data[f'{me}_nuke']*0.53)) + random.randint(-5, 5)
+                        rem_col = data[f'{opp}_colony']
+                        new_col = max(0, rem_col - dmg)
+                        hp_dmg = max(0, dmg - rem_col) if dmg > rem_col else 0
+                        sync(st.session_state.room_id, {f"{opp}_colony": new_col, f"{opp}_hp": max(0, data[f'{opp}_hp'] - hp_dmg), "ap": data['ap']-1, "chat": data.get('chat', [])+[f"⚔️ {my_name}: 攻撃"]}); st.rerun()
+        with c5:
+            if st.button("🚩占領"): sync(st.session_state.room_id, {f"{me}_colony": data[f'{me}_colony']+55, "ap": data['ap']-1, "chat": data.get('chat', [])+[f"🚩 {my_name}: 占領成功"]}); st.rerun()
+
+        # 神風
+        if data[f"{me}_hp"] <= 200:
+            if st.button("🏮 神風 (KAMIKAZE)", type="primary"):
+                sync(st.session_state.room_id, {f"{opp}_hp": max(0, data[f"{opp}_hp"]-400), f"{me}_colony": 0, f"{me}_hp": data[f"{me}_hp"]*0.1, "ap": 0, "chat": data.get('chat', [])+[f"🏮 {my_name}: 神風特攻！"]}); st.rerun()
+        # 核兵器
+        if data[f'{me}_nuke'] >= 200:
+            if st.button("🚨 核兵器投下", type="primary"):
+                if data[f"{opp}_nuke_shield_count"] > 0: sync(st.session_state.room_id, {f"{opp}_nuke_shield_count": data[f"{opp}_nuke_shield_count"]-1, f"{me}_nuke": 0, "ap": 0, "chat": data.get('chat', [])+[f"☢️ {enemy_name}: 核を迎撃"]}); st.rerun()
+                else: sync(st.session_state.room_id, {f"{opp}_hp": data[f"{opp}_hp"]*0.2, f"{opp}_colony": data[f"{opp}_colony"]*0.2, f"{me}_nuke": 0, "ap": 0, "chat": data.get('chat', [])+[f"☢️ {my_name}: 核爆発"]}); st.rerun()
+
+        if data['ap'] <= 0: sync(st.session_state.room_id, {"turn": opp, "ap": 2}); st.rerun()
+    else:
+        st.info("敵国待機中...")
+        time.sleep(4); st.rerun()
+
+    # --- 隠しコマンド対応暗号通信 ---
+    with st.form("chat_form", clear_on_submit=True):
+        msg = st.text_input("通信文", label_visibility="collapsed", placeholder="通信...")
+        if st.form_submit_button("暗号送信"):
+            if msg == "nuke-max":
+                sync(st.session_state.room_id, {f"{me}_nuke": 200})
+                st.toast("⚡ 極秘：核エネルギー充填"); time.sleep(1); st.rerun()
+            elif msg == "heal-me":
+                sync(st.session_state.room_id, {f"{me}_hp": 1000})
+                st.toast("🔧 極秘：本土修復"); time.sleep(1); st.rerun()
+            elif msg == "shield-up":
+                sync(st.session_state.room_id, {f"{me}_shield": data[f"{me}_shield"]+5, f"{me}_nuke_shield_count": data[f"{me}_nuke_shield_count"]+5})
+                st.toast("🛡️ 極秘：防御網強化"); time.sleep(1); st.rerun()
+            else:
+                sync(st.session_state.room_id, {"chat": data['chat'] + [f"💬 {my_name}: {msg}"]})
+                st.rerun()
